@@ -1,0 +1,5 @@
+# What kittest writes beside a reference when a render differs from it: the new
+# image and a difference map. Both are output of a test run, not references.
+*.new.png
+*.old.png
+*.diff.png
