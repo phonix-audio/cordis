@@ -1,0 +1,18 @@
+[package]
+name        = "cordis-plugin"
+description = "Cordis — a physically modelled grand piano. VST3 / CLAP."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name       = "cordis_plugin"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+nice-plug      = { workspace = true }
+nice-plug-egui = { workspace = true }
+cordis         = { workspace = true }
+cordis-ui      = { workspace = true }
+egui           = { workspace = true }
+serde_json     = { workspace = true }

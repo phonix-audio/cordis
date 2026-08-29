@@ -1,0 +1,371 @@
+//! Cordis — a physically modelled grand piano. VST3/CLAP plugin.
+//!
+//! Wraps CordisEngine in nice-plug. Stereo synth out, MIDI in. Host-
+//! automatable knobs push targeted Set commands only on change; the mallet
+//! selector and the full patch persist with the project.
+
+use nice_plug::prelude::*;
+use nice_plug_egui::{create_egui_editor, EguiState};
+use std::sync::{mpsc, Arc, RwLock};
+
+use cordis_ui::CordisApp;
+use cordis::patch::factory_presets_tagged;
+use cordis::{CordisCommand, CordisEngine, CordisMeterState, CordisPatch};
+use cordis::state_buffer::{meter_channel, SharedReader, Writer};
+mod vstpreset;
+use vstpreset::ParamValue;
+
+const KNOBS: usize = 8;
+
+pub struct CordisPlugin {
+    params: Arc<CordisParams>,
+    engine: Option<CordisEngine>,
+    tx: mpsc::Sender<CordisCommand>,
+    meter: Option<SharedReader<CordisMeterState>>,
+    pending: Option<(mpsc::Receiver<CordisCommand>, Writer<CordisMeterState>)>,
+    buf: Vec<f32>,
+    presets: Vec<CordisPatch>,
+    last_preset: i32,
+    last_knobs: Option<[f32; KNOBS]>,
+    last_hybrid: Option<(bool, f32)>,
+}
+
+impl Default for CordisPlugin {
+    fn default() -> Self {
+        let presets = factory_presets_tagged();
+        let mut names = Vec::with_capacity(presets.len() + 1);
+        names.push("Init".to_string());
+        for p in &presets { names.push(p.name.clone()); }
+        let (tx, rx) = mpsc::channel();
+        let (mw, mr) = meter_channel::<CordisMeterState>();
+        Self {
+            params: Arc::new(CordisParams::new(presets.len(), Arc::new(names))),
+            engine: None, tx, meter: Some(mr), pending: Some((rx, mw)),
+            buf: Vec::new(), presets, last_preset: 0, last_knobs: None, last_hybrid: None,
+        }
+    }
+}
+
+#[derive(Params)]
+struct CordisParams {
+    #[persist = "editor-state"]
+    editor_state: Arc<EguiState>,
+    #[persist = "patch"]
+    patch_state: Arc<RwLock<CordisPatch>>,
+    #[id = "preset"] preset: IntParam,
+    #[id = "voicing"] voicing: FloatParam,
+    #[id = "unison"] unison: FloatParam,
+    #[id = "width"] width: FloatParam,
+    #[id = "damper"] damper: FloatParam,
+    #[id = "action"] action: FloatParam,
+    #[id = "release"] release: FloatParam,
+    #[id = "tune"] tune: FloatParam,
+    #[id = "gain"] gain: FloatParam,
+    // The sample-cache preview. Added after the split, because the host used to
+    // switch it on through an engine method that no longer crosses the
+    // boundary. Appended, so a project saved before they existed simply has no
+    // key for them and keeps the defaults.
+    #[id = "hybrid"] hybrid: BoolParam,
+    #[id = "maxhold"] max_hold: FloatParam,
+}
+
+impl CordisParams {
+    fn new(count: usize, names: Arc<Vec<String>>) -> Self {
+        let n1 = names.clone();
+        Self {
+            // The editor draws a fixed composition; the window takes its size
+            // from the constants that composition is laid out against, so the
+            // two cannot drift and leave the piano cropped in a host.
+            editor_state: EguiState::from_size(
+                cordis_ui::app::W as u32,
+                cordis_ui::app::H as u32,
+            ),
+            patch_state: Arc::new(RwLock::new(CordisPatch::default())),
+            preset: IntParam::new("Preset", 0, IntRange::Linear { min: 0, max: count as i32 })
+                .with_value_to_string(Arc::new(move |v| n1.get(v as usize).cloned().unwrap_or_else(|| format!("P{v}"))))
+                .with_string_to_value(Arc::new(move |s| names.iter().position(|n| n.eq_ignore_ascii_case(s)).map(|i| i as i32))),
+            voicing: FloatParam::new("Voicing", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            unison: FloatParam::new("Unison", 2.5, FloatRange::Linear { min: 0.0, max: 12.0 }).with_unit(" cents"),
+            width: FloatParam::new("Spread", 0.7, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            damper: FloatParam::new("Dampers", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            action: FloatParam::new("Action", 0.35, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            release: FloatParam::new("Release", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            tune: FloatParam::new("Tune", 0.0, FloatRange::Linear { min: -50.0, max: 50.0 }).with_unit(" cents"),
+            gain: FloatParam::new("Gain", 0.9, FloatRange::Linear { min: 0.0, max: 2.0 }),
+            hybrid: BoolParam::new("Hybrid Preview", false),
+            max_hold: FloatParam::new("Max Hold", 6.0, FloatRange::Linear { min: 1.0, max: 20.0 })
+                .with_unit(" s"),
+        }
+    }
+    fn knob_sig(&self) -> [f32; KNOBS] {
+        [self.voicing.value(), self.unison.value(), self.width.value(),
+         self.damper.value(), self.action.value(), self.release.value(),
+         self.tune.value(), self.gain.value()]
+    }
+}
+
+impl Default for CordisParams {
+    fn default() -> Self { Self::new(0, Arc::new(vec!["Init".to_string()])) }
+}
+
+/// `$XDG_CACHE_HOME/phonix-audio/cordis-banks`, or
+/// `~/.cache/phonix-audio/cordis-banks`.
+fn bank_cache_root() -> Option<std::path::PathBuf> {
+    let base = std::env::var_os("XDG_CACHE_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;
+    Some(base.join("phonix-audio").join("cordis-banks"))
+}
+
+fn gen_vstpresets(presets: &[CordisPatch]) {
+    // Not a second literal: the `.vstpreset` header MUST carry the same class id
+    // the wrapper registers, or a host resolves the bank to nothing.
+    let class_id = &<CordisPlugin as Vst3Plugin>::VST3_CLASS_ID;
+    let mapped: Vec<(String, Vec<(&str, ParamValue)>)> = presets.iter().enumerate().map(|(i, p)| {
+        let cat = "Cordis";
+        (format!("{cat}/{}", p.name), vec![
+            ("preset", ParamValue::I32(i as i32 + 1)),
+            ("voicing", ParamValue::F32(p.voicing)),
+            ("unison", ParamValue::F32(p.unison_detune)),
+        ])
+    }).collect();
+    let refs: Vec<(&str, Vec<(&str, ParamValue)>)> = mapped.iter().map(|(n, p)| (n.as_str(), p.clone())).collect();
+    let _ = vstpreset::generate_factory_presets("Phonix Audio", "Cordis", class_id, env!("CARGO_PKG_VERSION"), &refs);
+}
+
+impl Plugin for CordisPlugin {
+    const NAME: &'static str = "Cordis";
+    const VENDOR: &'static str = "Phonix Audio";
+    const URL: &'static str = "";
+    const EMAIL: &'static str = "";
+    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
+    const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
+        main_input_channels: None,
+        main_output_channels: Some(unsafe { std::num::NonZeroU32::new_unchecked(2) }),
+        aux_input_ports: &[], aux_output_ports: &[], names: PortNames::const_default(),
+    }];
+    // MidiCCs, not Basic: nice-plug only publishes the IMidiMapping a VST3 host
+    // needs when this is MidiCCs. With Basic the NoteEvent::MidiCC arm below is
+    // dead code in every VST3 host, so the sustain pedal never arrives at all.
+    // The 2080 controller parameters this adds are flagged hidden; a host that
+    // shows them is not reading the flags.
+    const MIDI_INPUT: MidiConfig = MidiConfig::MidiCCs;
+    const MIDI_OUTPUT: MidiConfig = MidiConfig::None;
+    type SysExMessage = ();
+    type BackgroundTask = ();
+
+    fn params(&self) -> Arc<dyn Params> { self.params.clone() }
+
+    fn editor(&mut self, _ax: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        let patch_state = self.params.patch_state.clone();
+        let tx = self.tx.clone();
+        let meter = self.meter.take()?;
+        let mut app = CordisApp::new(tx, meter);
+        // Seed the editor from the restored state before its first frame, or the
+        // closure below publishes the default patch over it.
+        if let Ok(p) = patch_state.read() { app.set_patch(p.clone()); }
+        let hybrid_param = self.params.clone();
+        create_egui_editor(self.params.editor_state.clone(), app, Default::default(),
+            |_c, _q, _a| {},
+            move |ui, setter, _q, app| {
+                let ctx = ui.ctx().clone();
+                app.draw_ui(&ctx);
+                // The lamp's request goes through the HOST PARAMETER, so the
+                // parameter, the engine and the lamp can never disagree (the
+                // lamp used to command the engine directly and leave the
+                // parameter behind).
+                if let Some(on) = app.take_wants_hybrid() {
+                    setter.begin_set_parameter(&hybrid_param.hybrid);
+                    setter.set_parameter(&hybrid_param.hybrid, on);
+                    setter.end_set_parameter(&hybrid_param.hybrid);
+                }
+                if let Ok(mut p) = patch_state.write() { *p = app.current_patch(); }
+            })
+    }
+
+    /// Must be re-entrant. nice-plug calls this again from `set_state` whenever a
+    /// buffer config already exists, and a host that calls `setup_processing`
+    /// before restoring state — some VST3 hosts do — therefore always
+    /// takes the second path. The one-shot version returned `false` there, so
+    /// `setState` reported `kResultFalse` and the restored patch never reached
+    /// the engine. The channel ends only exist once, so build the engine on the
+    /// first call and re-rate it in place afterwards.
+    fn initialize(&mut self, _l: &AudioIOLayout, cfg: &BufferConfig, _c: &mut impl InitContext<Self>) -> bool {
+        match self.pending.take() {
+            Some((rx, mw)) => {
+                let mut eng = CordisEngine::new(cfg.sample_rate, rx, mw);
+                // Only when the host says it is playing. A bounce runs flat
+                // out, slower than real time by design, so an instrument that
+                // sheds voices under load would shed them for the whole render
+                // — heard as notes cut off in a file that had to be exact.
+                eng.set_governor(cfg.process_mode == ProcessMode::Realtime);
+                // Same criterion for the board: live play runs the decoupled
+                // model (strings push the plate, never read it back; its drain
+                // is baked into the banks), a bounce runs the exact one.
+                // initialize() is off the audio thread, where rebuilding the
+                // 88 prototypes is free.
+                eng.set_decoupled(cfg.process_mode == ProcessMode::Realtime);
+                // Where persisted hybrid banks live: rendered once per timbre,
+                // then every session opens them as file reads. Env access is
+                // fine HERE (plugin init, not DSP); the engine only carries
+                // the path to its filler thread.
+                if let Some(root) = bank_cache_root() {
+                    eng.set_bank_cache_root(root);
+                }
+                self.engine = Some(eng);
+                // Writing the factory bank is a first-run side effect, not
+                // something a state restore should redo.
+                gen_vstpresets(&self.presets);
+            }
+            None => match self.engine.as_mut() {
+                Some(e) => {
+                    e.set_governor(cfg.process_mode == ProcessMode::Realtime);
+                    e.set_decoupled(cfg.process_mode == ProcessMode::Realtime);
+                    e.set_sample_rate(cfg.sample_rate)
+                }
+                None => return false,
+            },
+        }
+        self.buf = vec![0.0; cfg.max_buffer_size as usize * 2];
+        let patch = self.params.patch_state.read().map(|p| p.clone()).unwrap_or_default();
+        let _ = self.tx.send(CordisCommand::LoadPatch(Box::new(patch)));
+        self.last_preset = self.params.preset.value();
+        // Force the knob diff in `process` to resend all eight Set commands, so
+        // the restored parameter values reach the engine even if the patch blob
+        // was absent.
+        self.last_knobs = None;
+        self.last_hybrid = None;
+        true
+    }
+
+    fn reset(&mut self) {}
+
+    fn process(&mut self, buffer: &mut Buffer, _aux: &mut AuxiliaryBuffers, ctx: &mut impl ProcessContext<Self>) -> ProcessStatus {
+        let engine = match self.engine.as_mut() { Some(e) => e, None => return ProcessStatus::Normal };
+        let tx = &self.tx;
+
+        let cp = self.params.preset.value();
+        if cp != self.last_preset {
+            self.last_preset = cp;
+            if cp > 0 { if let Some(p) = self.presets.get((cp - 1) as usize) { let _ = tx.send(CordisCommand::LoadPatch(Box::new(p.clone()))); } }
+        }
+        // The cache is a PREVIEW: each note is rendered once and replayed, which
+        // is far cheaper but cannot reproduce a hammer meeting a string that is
+        // already moving. Off by default, so what the instrument plays is the
+        // exact model.
+        let hyb = (self.params.hybrid.value(), self.params.max_hold.value());
+        if self.last_hybrid != Some(hyb) {
+            self.last_hybrid = Some(hyb);
+            let _ = tx.send(CordisCommand::SetHybrid { on: hyb.0, max_hold_secs: hyb.1 });
+        }
+
+        let sig = self.params.knob_sig();
+        let changed = self.last_knobs.map_or(true, |p| p.iter().zip(&sig).any(|(a, b)| (a - b).abs() > 1e-6));
+        if changed {
+            let prev = self.last_knobs.unwrap_or([f32::NAN; KNOBS]);
+            let s = |i: usize, c: CordisCommand| if prev[i].is_nan() || (prev[i] - sig[i]).abs() > 1e-6 { let _ = tx.send(c); };
+            s(0, CordisCommand::SetVoicing(sig[0]));
+            s(1, CordisCommand::SetUnisonDetune(sig[1]));
+            s(2, CordisCommand::SetWidth(sig[2]));
+            s(3, CordisCommand::SetDamper(sig[3]));
+            s(4, CordisCommand::SetMechanics(sig[4]));
+            s(5, CordisCommand::SetReleaseNoise(sig[5]));
+            s(6, CordisCommand::SetTune(sig[6]));
+            s(7, CordisCommand::SetGain(sig[7]));
+            self.last_knobs = Some(sig);
+        }
+
+        while let Some(ev) = ctx.next_event() {
+            match ev {
+                NoteEvent::NoteOn { note, velocity, .. } => { let _ = tx.send(CordisCommand::NoteOn(note, (velocity * 127.0) as u8)); }
+                NoteEvent::NoteOff { note, .. } => { let _ = tx.send(CordisCommand::NoteOff(note)); }
+                // A piano without its sustain pedal is not a piano.
+                NoteEvent::MidiCC { cc: 64, value, .. } => {
+                    let _ = tx.send(CordisCommand::SustainPedal(value >= 0.5));
+                }
+                _ => {}
+            }
+        }
+
+        let n = buffer.samples();
+        let il = n * 2;
+        if self.buf.len() < il { self.buf.resize(il, 0.0); }
+        for s in &mut self.buf[..il] { *s = 0.0; }
+        engine.process_audio(&mut self.buf[..il], 2);
+        let ch = buffer.as_slice();
+        if ch.len() >= 2 {
+            let (l, r) = ch.split_at_mut(1);
+            for i in 0..n { l[0][i] = self.buf[i * 2]; r[0][i] = self.buf[i * 2 + 1]; }
+        } else if !ch.is_empty() {
+            for i in 0..n { ch[0][i] = (self.buf[i * 2] + self.buf[i * 2 + 1]) * 0.5; }
+        }
+        ProcessStatus::Normal
+    }
+}
+
+impl ClapPlugin for CordisPlugin {
+    const CLAP_ID: &'static str = "com.phonix-audio.cordis";
+    const CLAP_DESCRIPTION: Option<&'static str> = Some("Physically modelled grand piano");
+    const CLAP_MANUAL_URL: Option<&'static str> = None;
+    const CLAP_SUPPORT_URL: Option<&'static str> = None;
+    // No `piano` here, and not an oversight: CLAP's plugin-features.h defines no
+    // piano feature, and nice-plug's `ClapFeature` has no such variant. The only
+    // way to spell one is `ClapFeature::Custom`, which nice-plug debug-asserts
+    // must be namespaced (`phonix:piano`) — a string no host matches on. The
+    // word a user searches for is carried by CLAP_DESCRIPTION instead. VST3 does
+    // have the category, and takes it below.
+    const CLAP_FEATURES: &'static [ClapFeature] = &[ClapFeature::Instrument, ClapFeature::Synthesizer, ClapFeature::Stereo];
+}
+
+impl Vst3Plugin for CordisPlugin {
+    const VST3_CLASS_ID: [u8; 16] = *b"PxCordisPiano001";
+    // Piano first: a host that browses by category files us under pianos, where
+    // someone looking for one actually looks, rather than only among synths.
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
+        &[Vst3SubCategory::Instrument, Vst3SubCategory::Piano, Vst3SubCategory::Synth];
+}
+
+nice_export_clap!(CordisPlugin);
+nice_export_vst3!(CordisPlugin);
+
+// ── Frozen identifiers ────────────────────────────────────────────
+//
+// These four strings are a compatibility surface, not a naming choice.
+//
+// The class id resolves an exported DAWproject `Vst3Plugin` device and sits in
+// the header of every `.vstpreset`; the CLAP id identifies the plugin to a CLAP
+// host; the vendor and product names compose the directory Cubase's MediaBay
+// indexes. Change any of them and existing projects and preset banks point at a
+// plugin no host can find.
+//
+// They were SET, once, at first publication under the phonix-audio organisation.
+// Nothing shipped before that, so there was exactly one moment in which choosing
+// them was free. That moment is over: from here they are read-only.
+//
+// and asserts against the literal rather than against this crate now that the
+// dependency runs the other way. Its copy has to be moved to the value below in
+// the same change, or its DAWproject export names a plugin that no longer
+// exists.
+#[cfg(test)]
+mod frozen_identifiers {
+    use super::*;
+
+    #[test]
+    fn the_ids_a_host_resolves_us_by_have_not_moved() {
+        assert_eq!(
+            <CordisPlugin as Vst3Plugin>::VST3_CLASS_ID,
+            *b"PxCordisPiano001",
+        );
+        // A VST3 class id is exactly 16 bytes: the wrapper hex-encodes it into a
+        // 32-character FUID, so a literal of any other length is a silently
+        // different plugin rather than a compile error.
+        assert_eq!(<CordisPlugin as Vst3Plugin>::VST3_CLASS_ID.len(), 16);
+        assert!(<CordisPlugin as Vst3Plugin>::VST3_CLASS_ID.is_ascii());
+        assert_eq!(
+            <CordisPlugin as ClapPlugin>::CLAP_ID,
+            "com.phonix-audio.cordis",
+        );
+        assert_eq!(<CordisPlugin as Plugin>::NAME, "Cordis");
+        assert_eq!(<CordisPlugin as Plugin>::VENDOR, "Phonix Audio");
+    }
+}
