@@ -1,0 +1,55 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cordis",
+    "crates/cordis-research",
+    "crates/cordis-ui",
+    "crates/cordis-plugin",
+]
+
+[workspace.package]
+version    = "0.1.0"
+edition    = "2021"
+license    = "MIT OR Apache-2.0"
+authors    = ["Cyril Bonté"]
+repository = "https://github.com/phonix-audio/cordis"
+
+[workspace.dependencies]
+cordis    = { path = "crates/cordis",    version = "0.1.0" }
+cordis-ui = { path = "crates/cordis-ui", version = "0.1.0" }
+
+serde      = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# The editor speaks plain `egui`, never `eframe`. `eframe::egui` is only a
+# re-export, so dropping eframe takes glow, winit, x11 and wayland out of the
+# graph with it, and the Windows cross-build stops having to dodge the
+# Linux-only backend features.
+egui        = "0.34"
+egui_extras = { version = "0.34", features = ["all_loaders"] }
+rfd         = "0.15"
+directories = "5.0"
+
+rustfft = "6.2"
+hound   = "3.5"
+
+# Headless egui harness: AccessKit queries for behaviour, software-Vulkan
+# rendering (lavapipe) for image snapshots. Version must track egui.
+egui_kittest = { version = "0.34", features = ["wgpu", "snapshot"] }
+
+nice-plug      = { git = "https://codeberg.org/RustAudio/nice-plug.git", rev = "ea25d719f252d683cb39ffa05d9eabcc6dbb768c" }
+nice-plug-egui = { git = "https://codeberg.org/RustAudio/nice-plug.git", rev = "ea25d719f252d683cb39ffa05d9eabcc6dbb768c" }
+
+[profile.dev]
+opt-level   = 2
+incremental = true
+debug       = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
+[profile.release]
+opt-level     = 3
+lto           = "thin"
+codegen-units = 16
+strip         = "symbols"
