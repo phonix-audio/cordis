@@ -24,10 +24,9 @@ NAME does not repeat the vendor. A host prints VENDOR beside it already, so
 "Phonix Cordis" would only spend the plugin list's width saying it twice.
 
 A host application that resolves plugins by class id holds a copy of it in its
-own DAWproject export. A test used to assert the two matched, which is no longer
-possible now that the dependency runs the other way; both sides assert against
-the literal instead, so a drift still fails a build, just two builds instead of
-one. That is a note for whoever maintains that side: its copy has to be moved to
+own DAWproject export. Both sides assert against the literal, so a drift fails a
+build on each. That is a note for whoever maintains that side: its copy has to be
+moved to
 the value above in the same change, or its export names a plugin no host can
 find. Nothing in this repository depends on it.
 
@@ -46,11 +45,9 @@ the editor. They are frozen as they are.
 These strings are JSON keys inside every saved project's plugin state and inside
 every generated `.vstpreset`.
 
-`hybrid` and `maxhold` were appended after the split from that host, which used
-to switch the sample cache on through an engine method that no longer crosses
-the boundary. Appending is safe: a project saved before they existed simply has
-no key for them, and nice-plug's restore only visits the keys it finds. Adding is
-always allowed; renaming and reordering are not.
+`hybrid` and `maxhold` are appended, and appending is safe: a project with no key
+for them simply has none, and nice-plug's restore only visits the keys it finds.
+Adding is always allowed; renaming and reordering are not.
 
 ## The patch's serde shape
 
@@ -68,8 +65,8 @@ Tests: `cordis`, `the_patch_field_names_and_their_order_are_a_wire_format` and
 
 ## The factory bank, names AND order
 
-    Concert Grand · Concert Grand, Bright · Concert Grand, Mellow · Close Mics
-    Player's Seat · Salon · Tuned Dead · Wide Unison · Long Dampers · Tight Dampers
+    Concert Grand * Concert Grand, Bright * Concert Grand, Mellow * Close Mics
+    Player's Seat * Salon * Tuned Dead * Wide Unison * Long Dampers * Tight Dampers
 
 The names are looked up as strings. The ORDER matters too: the plugin's integer
 `preset` parameter indexes this vector, and that integer is what a host's
@@ -85,11 +82,10 @@ Test: `cordis`, `the_factory_bank_is_a_wire_format`.
 48-byte header, `Comp`/`Info`/`List` chunk ids, uppercase-hex class id, and the
 `MetaInfo` XML shape. Third-party hosts parse these.
 
-Note one deliberate wart carried over unchanged: on Windows the preset directory
-is `%USERPROFILE%\Documents\VST3 Presets\<vendor>\<plugin>`, because that is
-where MediaBay looks. It used to be that path on *every* platform, with a literal
-`C:\Users\Public\Documents` fallback, which on Linux is not an absolute path but
-a single directory name containing backslashes; so every instantiation wrote its
-whole bank into a junk folder in the current directory. The Linux and macOS
+On Windows the preset directory is
+`%USERPROFILE%\Documents\VST3 Presets\<vendor>\<plugin>`, because that is where
+MediaBay looks. That path is Windows-only: a backslash path on Linux is not
+absolute but a single directory name, so a bank would be written into a junk
+folder in the current directory. The Linux and macOS
 branches were fixed; the Windows one was not touched, so nothing already indexed
 is orphaned.

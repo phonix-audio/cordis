@@ -26,6 +26,21 @@ off, which constants were set by ear because nothing is published, and what the
 instrument gives up when the machine runs out of time. Read it before deciding
 whether this model is fit for what you want.
 
+## The editor
+
+A grand piano seen from above. The two microphones are dots you drag on the
+soundboard, because `width` is where the model listens to the plate; the strings
+light as they sound; the dampers lift when the pedal goes down. The technician's
+adjustments sit around the case.
+
+![The editor](docs/screenshots/cordis_editor.png)
+
+The soundboard, with the microphones on it:
+
+![The scene](docs/screenshots/cordis_scene.png)
+
+![The keyboard](docs/screenshots/cordis_keyboard.png)
+
 ## Layout
 
     crates/cordis            the engine. serde, and libc on Linux.
@@ -108,14 +123,6 @@ they answer a question rather than showing the instrument off.
 patch's serde field names and their defaults, and the factory bank's names *and
 order*. All of them are written into files other programs read, and all of them
 are covered by a test.
-
-## History
-
-The engine began as a research project on piano physics
-rather than a plugin. That host now loads it as an ordinary scanned VST3, like
-any third-party plugin, which is what the split was for. The DAW is not public
-and nothing here depends on it; comments in the source that name it are recording
-where a decision came from, not pointing at code you can read.
 
 ## Licence
 

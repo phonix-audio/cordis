@@ -18,8 +18,8 @@ dates in the source.
 
 **This is the instrument's largest fault and everything else in this section is
 downstream of it.** The top of the compass is 15 to 16 dB under the rest of the
-keyboard (notes 87-108), its second partial sits at −10 to +17 dB where the Iowa
-Steinway sits at −30, and on some notes the fundamental is barely excited at
+keyboard (notes 87-108), its second partial sits at -10 to +17 dB where the Iowa
+Steinway sits at -30, and on some notes the fundamental is barely excited at
 all. It is audible: it reads as thin, bell-like or plucked rather than as a
 piano. Measured against a Gaussian pulse of this model's own contact duration
 and impulse, the whole 25 to 30 dB is in the force pulse's *shape*, and no force
@@ -30,11 +30,11 @@ best.
 The cause is known, and it is not the string, the felt or the board. The
 hammer-string loop closes once per audio sample. A real hammer is lifted off by
 the wave that returns from the agraffe, and at A7 that round trip is
-`2·x_H/c = 34 µs`; one and a half samples. So the model makes one clean
+`2*x_H/c = 34 us`; one and a half samples. So the model makes one clean
 half-sine where Chaigne & Askenfelt's Fig. 2 shows a train of pulses returning
 to zero between contacts, and a smooth single hump has deep spectral zeros. On
-2026-08-12 the blow was measured to offer the note's own fundamental −0.5 dB in
-the bass and **−46.1 dB at note 93**, with −22.0 to −35.7 either side of it. The
+2026-08-12 the blow was measured to offer the note's own fundamental -0.5 dB in
+the bass and **-46.1 dB at note 93**, with -22.0 to -35.7 either side of it. The
 pulse falls at 25 dB/octave between 4 and 8 kHz where a half-sine falls at 12,
 which is the 49 dB hole a middle C has there.
 
@@ -53,11 +53,11 @@ buffer; a rigid termination reflects *inverted*, so added rather than
 subtracted it is positive feedback), the residual compliance, a `t²` give
 profile, and removing the compliance. A fifth, advancing the string sub-sample
 through the contact, was retried on 2026-08-24 and parked again: it fixes the
-diagnosis (note 99's second partial goes +23.4 → −5.0 dB at 192 kHz) but drops
+diagnosis (note 99's second partial goes +23.4 -> -5.0 dB at 192 kHz) but drops
 the treble 9 dB where the middle loses 1, widens the second-partial spread from
 39 to 52 dB, fails the published contact-duration guards (note 96 at 1.60 ms
-against ≤ 1.2 ms; A4 at 1.05 string periods against Chaigne 2016's 0.88), and
-doubles the error against the Iowa reference (13.5 → 26.4 dB rms) because the
+against <= 1.2 ms; A4 at 1.05 string periods against Chaigne 2016's 0.88), and
+doubles the error against the Iowa reference (13.5 -> 26.4 dB rms) because the
 sub-loop bypasses the contact-patch weighting.
 
 Two more treble faults are separate but sit in the same register:
@@ -83,9 +83,9 @@ Two more treble faults are separate but sit in the same register:
 own bridge point at its own fundamental, with no hammer and no string in the
 path, the plate alone swings **24.8 dB from one semitone to the next**. Three
 cures were built and measured and none was keepable: compressing the magnitudes
-(24.8 → 30.6 dB; the nulls are made by the *signs*, not the magnitudes),
-averaging the ear over eight points (→ 21.2 dB, the notches merely move), and
-sharing the bridge's shape between the ears (worst jump 17.9 → 10.7 dB, at a
+(24.8 -> 30.6 dB; the nulls are made by the *signs*, not the magnitudes),
+averaging the ear over eight points (-> 21.2 dB, the notches merely move), and
+sharing the bridge's shape between the ears (worst jump 17.9 -> 10.7 dB, at a
 channel correlation of 0.966 against a real piano's 0.2; i.e. mono). Evenness
 and stereo width are in direct conflict for a two-point output. The honest cure
 is to read the far field as the modes' volume velocity rather than as two
@@ -149,7 +149,7 @@ out at A1; the pedal test returned `inf`). The term is holding the explicit
 scheme together, not describing a string. The real fix is Chabassier's
 continuity formulation with a Schur complement, which is a different scheme and
 not a different constant. What can be said about the size of the error: the
-product `S·C` measures 0.004 to 0.023 across the compass, and the cross-term the
+product `S*C` measures 0.004 to 0.023 across the compass, and the cross-term the
 formulation would add is 0.3% of the bridge force with one voice, 0.8% with
 three and 1.4% with ten (2026-08-13).
 
@@ -174,7 +174,7 @@ term is a *static* compliance where the one it must join is a *one-sample* one,
 and at A5 it is about twice as large, so adding it whole roughly triples the
 give the felt is pressed against. Ramping it in over the sub-steps, the obvious
 repair, was checked on paper and **does not work, so it is not worth a cycle**:
-`ω_c·h = 0.141`, so the ramp saturates by the twentieth sub-step and the term
+`ω_c*h = 0.141`, so the ramp saturates by the twentieth sub-step and the term
 would be applied whole over a contact that lasts twenty to a hundred and fifty
 *samples*. That is the version that failed nine tests at once, among them the
 one that exists for exactly this.
@@ -216,9 +216,9 @@ one who finds three dead fields.
 
 - **Stulov's hereditary term** (`EPSILON = 0`). The felt's memory is implemented
   and shipping at zero. Swept from 0 to 0.9 the contact stays inside Chaigne's
-  envelope and the peak force falls sensibly (52 → 42 N at C4), but the force's
-  second partial barely moves at C4 and goes the *wrong way* at E♭6 (−11.1 →
-  −6.0 dB). It is not the answer to the treble. Before this was measured the
+  envelope and the peak force falls sensibly (52 -> 42 N at C4), but the force's
+  second partial barely moves at C4 and goes the *wrong way* at E♭6 (-11.1 ->
+  -6.0 dB). It is not the answer to the treble. Before this was measured the
   fields existed and were never read, which read as an implemented model and was
   not one.
 - **The longitudinal pulse train**; the feature Chaigne names as missing from
@@ -232,12 +232,12 @@ one who finds three dead fields.
   the result is modest and mixed, and below note 88 the felt anchors; fitted
   with the string held still; have already absorbed the error it corrects.
 - **The curvature term**, the largest single measured gain of its day (note 99
-  −33.8 → −15.7 dB, note 105 −32.5 → −12.3 dB), off because it broke three
+  -33.8 -> -15.7 dB, note 105 -32.5 -> -12.3 dB), off because it broke three
   stability tests at once.
 - **A per-voice implicit bridge solve.** Right for one voice and wrong for an
   instrument: it diverged at sixteen voices where the explicit scheme reaches a
   hundred and twenty-eight. The diagnosis it produced stands; the cure does not.
-  A correct bridge solve is a genuine N×N system, not a scalar.
+  A correct bridge solve is a genuine NxN system, not a scalar.
 
 ## What was chosen rather than measured
 
@@ -377,7 +377,7 @@ by how many are sounding.
 - **CLAP has no piano category.** `plugin-features.h` defines none, so browsing
   a CLAP host by feature will not surface this; the word is carried in the
   description instead.
-- **The editor is a fixed 1280×800 drawing and does not resize.** That is a
+- **The editor is a fixed 1280x800 drawing and does not resize.** That is a
   choice (a column layout that reflows is the wrong tool for a picture) but it
   is a limit a user meets immediately.
 - **The Windows preset directory keeps a deliberate wart**, documented in

@@ -1,0 +1,8 @@
+# The screenshots the documentation shows, one snapshot name per line.
+#
+# A name here must match a `snapshot("<name>")` call, or scripts/screenshots.sh
+# says so rather than copying nothing quietly.
+
+cordis_editor
+cordis_scene
+cordis_keyboard
