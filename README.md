@@ -14,17 +14,27 @@ contact scheme; Chabassier (2012) for the string, the felt and the measured
 stringing of a Steinway D; Ege (2009, 2013) for the soundboard's measured modes
 and damping; Chaigne & Askenfelt (JASA 1994) for the hammer felt.
 
-## What does not work
+## Status
 
-`REFERENCES.md` lists the published work this implements, paper by paper,
-with the module that follows each one.
+Not released. The model runs and the tests are green; four faults below are
+open, and the first two are large enough to hear before deciding this is fit
+for the music being made.
 
-`LIMITATIONS.md`. It is long, and it is the honest half of this README: the
-treble deficit and its cause, the energy the hammer hands back at fortissimo,
-the modes the banks do not carry, what was built and measured and left switched
-off, which constants were set by ear because nothing is published, and what the
-instrument gives up when the machine runs out of time. Read it before deciding
-whether this model is fit for what you want.
+| open | |
+|---|---|
+| the treble | notes 87-108 sit 15 to 16 dB under the rest of the keyboard, and on some notes the fundamental is barely excited. It reads as thin, bell-like or plucked. The whole deficit is in the shape of the force pulse |
+| note-to-note level | the plate alone swings 24.8 dB from one semitone to the next, driven at its own bridge point. The two-point output is the cause |
+| energy at fortissimo | the hammer leaves the top note with 2.19 times the momentum it arrived with, where 2.0 is the elastic limit |
+| the modes not carried | string banks truncate at Nyquist, the plate at 16 kHz. The treble delivers two fifths of the bridge force it should |
+
+Deliberate, and staying: sympathetic resonance is one shared bank rather than
+87 strings, `Hybrid Preview` is a sampler and not the physics, and a live pass
+is not the same render as an offline bounce.
+
+`LIMITATIONS.md` carries all of it with the measurements and the dates they
+were taken, plus what was built and left switched off and which constants were
+chosen by ear. `REFERENCES.md` lists the published work this implements, paper
+by paper, with the module that follows each one.
 
 ## The editor
 
