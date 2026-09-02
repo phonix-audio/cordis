@@ -264,61 +264,54 @@ fn termination_load(f_hz: f64) -> f64 {
     t * t * (3.0 - 2.0 * t)
 }
 
-/// How finely the string is advanced while the felt is on it.
-///
-/// The hammer has been integrated at sub-sample steps for a while, but the
-/// STRING was not: its position through the sample was extrapolated, and six
-/// attempts at extrapolating it are recorded below. Measured 2026-08-21, the
-/// extrapolation is what wrecks the treble. At 2.5 kHz a period is nineteen
-/// samples and a contact lasts about thirty, so the scheme's one-sample lag is
-/// twenty degrees of phase at the fundamental; the energy the felt takes back out
-/// of the string then depends on where in its cycle the string happened to be,
-/// and the balance scatters note by note. Excited by a clean impulse the same
-/// string gives its second partial +5.2 dB at EVERY note from 84 to 103; excited
-/// by the felt it ran from -21 to +23 dB, and +23 dB is a note whose octave is
-/// louder than itself, which is heard as a bell rather than a piano.
-///
-/// Rendering the same model at 192 kHz removes it (note 99: +23.4 dB becomes
-/// -5.0), which is the proof that it is resolution and not physics. Advancing the
-/// string at the hammer's own sub-steps reproduces that at 48 kHz (-8.4 dB).
+/// How finely the string is advanced while the felt is on it, per audio
+/// sample: the default count, which the hammer raises with the note (see
+/// `Hammer::strike`). Inside a contact the transverse banks tick at this
+/// spacing and the felt is solved at every tick against the string's real
+/// position, so the wave returning from the agraffe, which is what lifts the
+/// hammer off, is resolved even where its round trip is shorter than a sample.
+/// The banks and the hammer must share one count: the hammer's inertia term is
+/// `h^2/M` at that spacing, and a bank spaced more coarsely reads the hammer
+/// as several times its mass.
 const SUB_CONTACT_STEPS: usize = 20;
 
-/// Whether to use it. OFF, and the reason is worth writing down because the
-/// diagnosis above is solid and the cure is not yet.
-///
-/// Advancing the string through the contact is more accurate, and that is
-/// exactly the problem: the once-a-sample scheme delivers the whole sample's
-/// force AT ITS START, so the mode has the full sample to respond to it, while a
-/// force spread across the sample produces about HALF the displacement (measured:
-/// 0.53 at low frequencies, rising to 0.66 by 12 kHz, because the lumped
-/// approximation is worse the faster the mode turns). The felt anchors, the
-/// levels and the decays were all fitted against the lumped scheme, so switching
-/// it on drops the treble by 9 dB where the middle loses 1, and the compass comes
-/// apart: measured on notes 84 to 103, the spread of the second partial against
-/// the fundamental went from 39 dB to 52 rather than closing.
-///
-/// So this lands with a re-derivation of the felt across the compass, not before.
-///
-/// 2026-08-24: tried again, measured, and parked again — with three new
-/// numbers that sharpen what "re-derivation" has to mean:
-///
-/// * the published duration guards fail (note 96: 1.60 ms against the
-///   measured <= 1.2; A4 at 1 m/s: 1.05 periods against Chaigne's 0.88), and
-///   the overshoot is INSENSITIVE to the felt stiffness — K swept x6 moved
-///   note 96 by 0.2 ms (`sweep_the_sub_contact_k_comp`), so re-anchoring K
-///   is not the re-derivation;
-/// * the contact pulse itself is CLEAN (single lobe, no tail, no chatter —
-///   dump_contact_force), so the scheme is sound and the extra length is its
-///   honest dynamics;
-/// * the Iowa error DOUBLES (13.5 -> 26.4 dB rms, treble_bench) because this
-///   path drives the banks directly in the sub-loop and BYPASSES the patch
-///   weighting — PATCH_SHAPE stops doing anything at all. The first job of
-///   the landing campaign is therefore to carry `force_to_string_now`'s
-///   shaping into the sub-step drive; only then can anything be re-fitted.
-const SUB_CONTACT: bool = false;
+/// Whether contacts are integrated that way at all. Off, every note uses the
+/// once-a-sample scheme (`Hammer::step_along`).
+const SUB_CONTACT: bool = true;
 
-/// Crate-visible mirror, for the hammer's stiffness re-anchor.
-pub(crate) const SUB_CONTACT_ON: bool = SUB_CONTACT;
+/// The lowest note whose contact is integrated with the string advanced.
+/// Below it the once-a-sample scheme resolves the blow (a bass contact spans
+/// a hundred and fifty samples and a fifth of a period) and the two schemes
+/// agree within a decibel at every note from C2 to C6, measured; above it the
+/// contact lasts more than a period and the sub-step scheme is what keeps
+/// the fundamental. The bass string carries four hundred modes, and advancing
+/// them twenty times a sample doubled the cost of a chord's attack for
+/// nothing audible.
+pub(crate) const SUB_CONTACT_FROM: u8 = 72;
+
+#[cfg(test)]
+pub(crate) static SUB_CONTACT_OVERRIDE: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(SUB_CONTACT);
+
+/// Whether the contact is integrated with the string advanced at the sub-step
+/// rate. Read by the hammer for its stiffness re-anchor as well.
+#[inline]
+pub(crate) fn sub_contact_on() -> bool {
+    #[cfg(test)]
+    {
+        SUB_CONTACT_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed)
+    }
+    #[cfg(not(test))]
+    {
+        SUB_CONTACT
+    }
+}
+
+/// Whether THIS note's contact is sub-stepped.
+#[inline]
+pub(crate) fn sub_contact_for(note: u8) -> bool {
+    sub_contact_on() && note >= SUB_CONTACT_FROM
+}
 
 const DAMPER_SLOW: f64 = 0.99985;
 const DAMPER_FAST: f64 = 0.9990;
@@ -439,6 +432,9 @@ pub struct Voice {
     /// True while the transverse banks are being advanced at the sub-step rate,
     /// so the once-a-sample tick knows to leave them alone.
     sub_running: bool,
+    /// Whether the transverse banks currently hold their state at the sub-step
+    /// spacing (inside a contact) rather than the audio spacing.
+    sub_spaced: bool,
     /// Calibration multiplier on the felt's stiffness.
     pub felt_scale: f64,
     /// Samples since the hammer last struck. Fades the duplex in over the first
@@ -539,6 +535,7 @@ impl Default for Voice {
             felt_scale: 1.0,
             contact_c: 0.0,
             sub_running: false,
+            sub_spaced: false,
             since_strike: 0,
             decoupled: false,
         }
@@ -676,6 +673,7 @@ impl Voice {
         self.age = 0;
         self.sr = sr as f64;
         self.hammer.strike(self.note, speed, voicing, sr);
+        self.match_substeps();
     }
 
     /// Ready this voice for a note. `detune_cents` is the spread across the
@@ -771,6 +769,27 @@ impl Voice {
         if self.felt_scale != 1.0 {
             self.hammer.scale_stiffness(self.felt_scale);
         }
+        self.match_substeps();
+    }
+
+    /// The string is advanced through the contact at the hammer's own sub-step
+    /// count, which grows with the note; the banks must be spaced to the same
+    /// count or the two sides integrate different clocks.
+    fn match_substeps(&mut self) {
+        let steps = self.hammer.sub_steps();
+        for st in self.strings.iter_mut() {
+            if st.bank.sub_steps() != steps {
+                st.bank.set_substep(steps);
+            }
+        }
+        // Between contacts the state sits at the audio spacing; the first
+        // sub-step of the new blow re-spaces it (see `advance`).
+        self.sub_spaced = false;
+    }
+
+    /// What the strings received from the felt this sample.
+    pub fn string_force(&self) -> f64 {
+        self.hammer.force_to_string_now(self.hammer.last_force)
     }
 
     /// Build every bank this note needs, leaving them silent.
@@ -1428,7 +1447,7 @@ impl Voice {
         // With the string advanced through the contact (see `advance`), the felt
         // is solved there, against the string's real position at each sub-step,
         // and this extrapolated call is not made at all.
-        if SUB_CONTACT && self.hammer.in_contact {
+        if sub_contact_for(self.note) && self.hammer.in_contact {
             self.contact_c = c;
             self.f_hammer = 0.0;
         } else {
@@ -1529,9 +1548,23 @@ impl Voice {
         // bridge moves by microns in a sample and its push is spread evenly
         // across the sub-steps.
         self.sub_running = false;
-        if SUB_CONTACT && self.hammer.in_contact && !self.strings.is_empty() {
-            let steps = SUB_CONTACT_STEPS;
+        if sub_contact_for(self.note) && self.hammer.in_contact && !self.strings.is_empty() {
+            let steps = self.hammer.sub_steps();
             let base = self.contact_base;
+            // A mode's recursion state is tied to its spacing. A blow that lands
+            // on a string still ringing from the last one finds (q1, q2) one
+            // audio sample apart; read one sub-step apart that is a velocity
+            // twenty to eighty times too large, and the felt is thrown off a
+            // string that is not moving. Measured: the Raindrop's repeated G#3
+            // tripled its force at every re-strike until the numbers left.
+            if !self.sub_spaced {
+                let dt = 1.0 / self.sr;
+                let dts = dt / steps as f64;
+                for st in self.strings.iter_mut() {
+                    st.bank.respace(dt, dts);
+                }
+                self.sub_spaced = true;
+            }
             // What the felt pushes against over ONE sub-step: its own inertia
             // plus the string's give at that spacing.
             let mut c_sub = 0.0;
@@ -1544,6 +1577,7 @@ impl Voice {
             }
             let c_eff = self.hammer.inertia_substep() + c_sub;
             let mut f_sum = 0.0;
+            let mut fs_sum = 0.0;
             let mut touched = false;
             for _ in 0..steps {
                 // Press against where the string will be after its own free
@@ -1553,20 +1587,20 @@ impl Voice {
                 for st in self.strings.iter() {
                     y_free += st.share * st.bank.peek_free_sub(&st.modes.strike);
                 }
-                let (f, r) = self.hammer.felt_solve_force(y_free - base, c_eff);
+                // The same felt law as the held-string path, patch weighting
+                // included: the hammer moves on the elastic force, the string
+                // receives what the contact patch passes on.
+                let (f, fs, _r, y_next) = self.hammer.felt_substep(y_free - base, c_eff);
                 if f > 0.0 {
                     touched = true;
                 }
                 f_sum += f;
+                fs_sum += fs;
                 for st in self.strings.iter_mut() {
-                    st.bank.add_force(&st.modes.strike, f * st.share);
+                    st.bank.add_force(&st.modes.strike, fs * st.share);
                     st.bank.tick_sub();
                 }
-                let mut y2 = 0.0;
-                for st in self.strings.iter() {
-                    y2 += st.share * st.bank.read(&st.modes.strike);
-                }
-                self.hammer.set_face(r + y2 - base);
+                self.hammer.set_face(y_next);
             }
             // The bridge's push is left on the once-a-sample coefficient rather
             // than spread across the sub-steps: the two spacings do not scale a
@@ -1577,7 +1611,7 @@ impl Voice {
                 st.bank.add_force(&st.modes.bridge, by);
             }
             let f_mean = f_sum / steps as f64;
-            self.hammer.note_contact_result(touched, f_mean);
+            self.hammer.note_contact_result(touched, f_mean, fs_sum / steps as f64);
             self.f_hammer = f_mean;
             self.sub_running = true;
             if !self.hammer.in_contact {
@@ -1587,6 +1621,7 @@ impl Voice {
                 for st in self.strings.iter_mut() {
                     st.bank.respace(dts, dt);
                 }
+                self.sub_spaced = false;
             }
         }
         let sub_running = self.sub_running;

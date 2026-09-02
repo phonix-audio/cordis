@@ -211,6 +211,10 @@ pub(crate) fn hammer_mass_for(note: f64) -> f64 {
     hammer_mass(note)
 }
 
+#[cfg(test)]
+pub(crate) static TOP_MASS_OVERRIDE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(f64::to_bits(3.50e-3));
+
 fn hammer_mass(note: f64) -> f64 {
     // Chabassier's five weighed hammers, and Conklin's ends.
     //
@@ -229,17 +233,25 @@ fn hammer_mass(note: f64) -> f64 {
         (91.0, 6.77e-3),
         (108.0, 3.50e-3),
     ];
-    if note <= ANCHORS[0].0 {
-        return ANCHORS[0].1;
+    #[cfg(test)]
+    let anchors = {
+        let mut a = ANCHORS;
+        a[5].1 = f64::from_bits(TOP_MASS_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed));
+        a
+    };
+    #[cfg(not(test))]
+    let anchors = ANCHORS;
+    if note <= anchors[0].0 {
+        return anchors[0].1;
     }
-    for w in ANCHORS.windows(2) {
+    for w in anchors.windows(2) {
         let ((n0, m0), (n1, m1)) = (w[0], w[1]);
         if note <= n1 {
             let u = (note - n0) / (n1 - n0);
             return m0 * (m1 / m0).powf(u);
         }
     }
-    ANCHORS[5].1
+    anchors[5].1
 }
 
 /// The felt's stored energy, `Φ(u) = K/(p+1)·[u]₊^{p+1}`.
@@ -392,8 +404,11 @@ const FELT_MASS_FRAC: f64 = 0.0;
 /// measured out. The reference it is fitted against is `treble_bench`.
 const PATCH_SHAPE: f64 = 0.9;
 
-/// See the re-anchoring note in `strike`. Swept on the published duration
-/// guards with SUB_CONTACT on.
+/// The felt's working stiffness over the published one, for a contact
+/// integrated with the string advanced. Pressed against the string's real
+/// yield rather than a one-sample compliance the felt stays on a shade
+/// longer, and this puts C7 at 1.1 periods at 5 m/s, where Chaigne and
+/// Askenfelt measured 1.26 at 2.5.
 const SUB_CONTACT_K_COMP: f64 = 2.0;
 
 #[cfg(test)]
@@ -401,8 +416,8 @@ pub(crate) static KCOMP_OVERRIDE: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(f64::to_bits(SUB_CONTACT_K_COMP));
 
 #[inline]
-fn sub_contact_k_comp() -> f64 {
-    if !crate::voice::SUB_CONTACT_ON {
+fn sub_contact_k_comp(note: u8) -> f64 {
+    if !crate::voice::sub_contact_for(note) {
         return 1.0;
     }
     #[cfg(test)]
@@ -588,51 +603,15 @@ impl Hammer {
         let n = note as f64;
         let v = voicing.clamp(0.0, 1.0);
         self.mass = hammer_mass(n);
-        // ── How finely THIS contact has to be integrated ───────────────────
-        //
-        // Twenty sub-steps was chosen against a bass blow, and a bass blow lasts
-        // 3.3 ms — a hundred and sixty samples, so three thousand sub-steps across
-        // the contact. The top of the keyboard makes contact for a quarter of a
-        // millisecond, twelve samples, two hundred and forty sub-steps: thirteen
-        // times coarser, on the stiffest felt and the lightest string the
-        // instrument has. The count is an ACCURACY setting, so it belongs to the
-        // blow and not to the instrument, and doubling it per octave above C6
-        // costs nothing that matters — it only runs while a hammer is touching,
-        // which is a thousandth of what this engine does.
-        //
-        // What it buys, stated honestly, is the reason the sub-stepping exists at
-        // all: `u^p` evaluated too coarsely folds its own spectrum back down onto
-        // the attack, and the shortest contacts are the ones most exposed to that.
-        //
-        // What it does NOT buy, measured 2026-08-13: the top note still gives back
-        // 2.19 times the momentum it carries at 5 m/s, to the second decimal,
-        // with twenty sub-steps and with eighty. That excess is therefore not an
-        // integration-resolution artefact and quadrupling the resolution does not
-        // touch it. It appears only at fortissimo (1.99 and 1.96 at 0.5 and 2 m/s)
-        // and it scales with the felt's stiffness, so the cause is in the contact
-        // law's behaviour at large compression and it is still open.
-        //
-        // Nor is it the Newton solve: raising `NEWTON_STEPS` from 8 to 40 leaves
-        // 2.19 unchanged to the second decimal as well. Both cheap explanations
-        // are therefore ruled out by measurement, and both were reverted rather
-        // than left in on the strength of a hypothesis.
-        //
-        // What has NOT been tested, and is the next thing to look at: the string
-        // enters this solve as a COMPLIANCE, `c_eff = h²/M + C/steps`, which is a
-        // lossless spring. A real string does not store the hammer's work and hand
-        // it back — it carries it away as travelling waves. A spring that gives
-        // during the blow and springs back at the end returns energy to the hammer
-        // that the string would have taken with it. It would also explain why the
-        // excess appears only at fortissimo and grows with felt stiffness: both
-        // make the compliance term the larger part of `c_eff`.
-        //
-        // One thing that is NOT wrong with it, checked so the next reader does not
-        // spend the time: the give is not double counted. `self.y` tracks the
-        // string as it moves, so at the next sample
-        // `u = (r + string_y + given) − (string_y + C·F) ≈ r`, since `given`
-        // accumulates to `C·F` and `C` is exactly the one-sample response that
-        // `a_step_splits_into_free_response_plus_compliance` pins. The books
-        // balance; what may not is that `C` is lossless where a string is not.
+        // How finely this contact is integrated. A bass blow lasts a hundred
+        // and sixty samples, the top of the keyboard's a dozen, on the stiffest
+        // felt and the lightest string there is; the count doubles per octave
+        // above C6 so `u^p` is never evaluated so coarsely that it folds its own
+        // spectrum onto the attack. It only runs while the felt touches. The
+        // string banks are re-spaced to the same count (`Voice::match_substeps`).
+        // Measured with them matched, the hammer leaves with at most twice the
+        // momentum it brought at every note and every dynamic, which is the
+        // elastic limit.
         self.steps = ((CONTACT_STEPS as f64) * 2f64.powf((n - 84.0) / 12.0))
             .clamp(CONTACT_STEPS as f64, 96.0) as usize;
         // ── The wave that comes back from the agraffe ─────────────────────
@@ -733,18 +712,10 @@ impl Hammer {
         // come back exactly. K's units are N/m^p and change WITH p, so nothing
         // else about K is meaningful to interpolate.
         let (k_ref, p_ref) = felt_from_the_measurements(n);
-        // ── The exact-contact scheme needs its own working stiffness ──────
-        //
-        // The published K were held to the published contact DURATIONS through
-        // the lumped once-a-sample string; with `SUB_CONTACT` the string is
-        // advanced through the contact and yields differently, and the same K
-        // leaves the felt on the string too long — measured on the published
-        // guards themselves: note 96's contact came out 1.60 ms against the
-        // measured <= 1.2, and A4 at 1 m/s reached 1.05 string periods against
-        // Chaigne 2016's 0.88 bound. The durations are the published
-        // observable, so K is re-anchored to THEM under the scheme that now
-        // integrates the blow; the factor is swept on those guards, not heard.
-        let k_ref = k_ref * sub_contact_k_comp();
+        // The contact durations are the published observable; the working
+        // stiffness follows the scheme that integrates the blow. See
+        // `SUB_CONTACT_K_COMP`.
+        let k_ref = k_ref * sub_contact_k_comp(note);
         #[cfg(test)]
         let p_ref = p_ref * f64::from_bits(P_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed));
         // Voicing on top: needling flattens the curve and softens it, filing
@@ -1054,99 +1025,17 @@ impl Hammer {
         for _ in 0..steps {
             let travelled = moved.get(sub).copied().unwrap_or(0.0);
             sub += 1;
-            let moved = given + travelled;
-            let u_now = self.y - string_y - moved;
-            let u_back = self.y_prev - string_y - moved;
-            if u_now > 0.0 {
+            // Where the strike point sits at this sub-step: its position at the
+            // start of the sample, plus what the felt has already pushed it,
+            // plus its own travel.
+            let string_pos = string_y + given + travelled;
+            if self.y - string_pos > 0.0 {
                 touched_here = true;
             }
-            // Free flight is the guess, and it is the answer whenever the felt is
-            // not touching anything.
-            // The core pushes the cap through the inner spring, and that push is
-            // known at the start of the sub-step, so it joins the free-flight
-            // guess and leaves Newton monotone in `r`.
-            let a = if two_mass {
-                let push = k_inner * (self.y_core - self.y);
-                2.0 * u_now - u_back + (h * h / m_cap) * push
-            } else {
-                2.0 * u_now - u_back
-            };
-            let mut r = a;
-            // ── Stulov's hereditary term, which was dead code ──────────────
-            //
-            // Felt is not a spring. Stulov's law subtracts a fading memory of the
-            // compression from the elastic force, which is what makes a real
-            // hammer LOSSY and gives loading and unloading different curves. The
-            // fields for it (`epsilon`, `mem`, `prev_up`) were declared, reset on
-            // every blow, and **never read**: the shipped hammer was a pure
-            // Hertzian spring, `K·u^p`, with no loss at all.
-            //
-            // That is measurable and it is the treble's fault. The force pulse at
-            // Eb6 comes out with its second partial only 11 dB down where a real
-            // Steinway needs about 38, and no pulse SHAPE at any published contact
-            // duration can make up the difference — the pulse is already smooth
-            // and single-humped. What is missing is the loss. With `TAU` at 90 µs
-            // the memory is a corner at 1.8 kHz, exactly where the model's
-            // spectrum starts running 30 to 50 dB hot.
-            //
-            // It enters as a force already known at the start of the sub-step, so
-            // Newton stays monotone in `r` and the solve is untouched.
-            //
-            // MEASURED, and it is not the answer: with `EPSILON` swept from 0 to
-            // 0.9 the contact stays inside Chaigne's envelope at every note and
-            // the peak force falls sensibly (52 -> 42 N at C4), but the force's
-            // second partial barely moves — -8.0 to -9.4 dB at C4, and at Eb6 it
-            // goes the WRONG way, -11.1 to -6.0. So `EPSILON` ships at 0 and this
-            // is live but inert. It is kept wired because the fields for it were
-            // declared and never read, which read as an implemented model and was
-            // not one; whoever comes next should find working code and this note
-            // rather than three dead fields.
-            // ── Hunt and Crossley: felt is not a spring ────────────────────
-            //
-            // Measured against Chaigne & Askenfelt's own figures, this contact
-            // returns **1.86 times the hammer's momentum** where a perfect elastic
-            // rebound is 2.0 — it dissipates essentially nothing, which is exactly
-            // what Bilbao's scheme was chosen to do. A real piano hammer rebounds
-            // weakly, with a restitution coefficient around a third.
-            //
-            // Hunt & Crossley (1975) is the standard lossy impact law: scale the
-            // elastic force by `1 + lambda * du/dt`, which stiffens the approach
-            // and softens the release, so the loading and unloading curves differ
-            // and the loop encloses the dissipated energy. Stulov's hereditary
-            // term is the other half of the same idea and cannot reach this on its
-            // own (swept to 0.9 it removes only 20 to 40 percent of the peak).
-            //
-            // The velocity is taken from the PREVIOUS sub-step, so the factor is a
-            // known positive constant inside the Newton solve and the residual
-            // stays monotone in `r`.
-            let du_prev = (u_now - u_back) / h;
-            let hc = (1.0 + hunt_crossley() * du_prev).max(0.05);
-            let fm = self.epsilon * self.mem;
-            for _ in 0..NEWTON_STEPS {
-                // Clamped at zero: felt cannot PULL. Without this the memory
-                // holds the hammer against the string, the contact runs to
-                // thirteen periods and the solve leaves the planet.
-                let g = r - a + c_eff * (hc * discrete_gradient(r, u_back, k, p) - fm).max(0.0);
-                let gp = 1.0 + c_eff * discrete_gradient_d(r, u_back, k, p);
-                let step = g / gp;
-                r -= step;
-                if step.abs() < 1.0e-16 {
-                    break;
-                }
-            }
-            let fe = (hc * discrete_gradient(r, u_back, k, p)).max(0.0);
-            // Only while it is touching: a memory that keeps charging through the
-            // gap has nothing to remember.
-            if fe > 0.0 {
-                self.mem += (fe - self.mem) * mem_a;
-            } else {
-                self.mem = 0.0;
-            }
-            let f = (fe - fm).max(0.0);
-            // The hammer moves by its own share of the give, the string by hers.
-            // What the string gives on its own account, plus what the returning
-            // wave adds once it has arrived. The second term is zero until then,
-            // so it can only ever make the contact softer — never less stable.
+            let (f, fs, _r, y_next) = self.felt_substep(string_pos, c_eff);
+            // The string gives by its own share of the force, plus what the
+            // returning wave adds once it has arrived. The second term is zero
+            // until then, so it can only ever make the contact softer.
             let mut dy_string = string_compliance / steps as f64 * f;
             if self.wave_delay > 0 {
                 let back = self.hist[(self.hist_at + WAVE_HISTORY - self.wave_delay)
@@ -1155,28 +1044,10 @@ impl Hammer {
                 self.hist[self.hist_at] = f;
                 self.hist_at = (self.hist_at + 1) % WAVE_HISTORY;
             }
-            if two_mass {
-                // Newton's third law on the inner spring: the cap's push back on
-                // the core is what slows the core down.
-                let push = k_inner * (self.y_core - self.y);
-                let next = 2.0 * self.y_core - self.y_core_prev - (h * h / (self.mass - m_cap).max(1e-9)) * push;
-                self.y_core_prev = self.y_core;
-                self.y_core = next;
-            }
-            self.y_prev = self.y;
-            self.y = r + string_y + moved + dy_string;
+            self.y = y_next;
             given += dy_string;
             f_mean += f;
-            // What the growing contact patch actually hands to the string. The
-            // hammer above has already moved on the FULL elastic force, so its
-            // trajectory and the contact's length are untouched.
-            let m = self.patch_m;
-            f_string += if m > 0.0 {
-                let w = (r.max(0.0) / self.u_ref).min(1.0).powf(m);
-                f * w
-            } else {
-                f
-            };
+            f_string += fs;
         }
         // ── When the hammer is gone ────────────────────────────────────────
         //
@@ -1208,18 +1079,55 @@ impl Hammer {
     /// `string_pos`. `c_eff` is what the Newton solve stays contractive against:
     /// the felt's own h^2/M plus the string's SUB-STEP compliance. Returns
     /// (force, gap r); the caller advances the string by that force, then sets the
-    /// felt face to `r + string_pos_new`. This is the coupled contact — the felt
-    /// pressed against the string's real, frequency-dependent yield resolved
-    /// sub-step by sub-step, instead of one flat compliance that low-passes the
-    /// force (the cause of the treble deficit).
+    /// felt face to `r + string_pos_new`.
     pub fn felt_solve_force(&mut self, string_pos: f64, c_eff: f64) -> (f64, f64) {
+        let (f, _, r, _) = self.felt_substep(string_pos, c_eff);
+        (f, r)
+    }
+
+    /// The felt law over ONE sub-step, the same whether the string under it is
+    /// held still for the sample or advanced with it: Bilbao's conservative
+    /// Hertz scheme around the gap, Stulov's memory, the Hunt-Crossley factor,
+    /// the cap's own mass, and the contact patch's weighting of what reaches the
+    /// string. `string_pos` is where the string will be at the end of the
+    /// sub-step before this force moves it, `c_eff` the give the solve presses
+    /// against. Returns (elastic force, force to the string, gap r); the caller
+    /// sets the face to the returned position once the string has moved.
+    #[inline]
+    pub fn felt_substep(&mut self, string_pos: f64, c_eff: f64) -> (f64, f64, f64, f64) {
+        let steps = self.steps.max(1);
+        let h = self.dt / steps as f64;
+        let mem_a = 1.0 - (-h / TAU).exp();
         let (k, p) = (self.stiffness, self.exponent);
+        let (frac, res) = felt_cap();
+        let two_mass = frac > 0.0;
+        let m_cap = if two_mass { self.mass * frac } else { self.mass };
+        let k_inner = if two_mass {
+            m_cap * (std::f64::consts::TAU * res).powi(2)
+        } else {
+            0.0
+        };
         let u_now = self.y - string_pos;
         let u_back = self.y_prev - string_pos;
-        let a = 2.0 * u_now - u_back;
+        // Free flight is the guess, and it is the answer whenever the felt is
+        // not touching anything. The core's push through the inner spring is
+        // known at the start of the sub-step, so it joins the guess and leaves
+        // Newton monotone in `r`.
+        let a = if two_mass {
+            let push = k_inner * (self.y_core - self.y);
+            2.0 * u_now - u_back + (h * h / m_cap) * push
+        } else {
+            2.0 * u_now - u_back
+        };
         let mut r = a;
+        // Hunt and Crossley's factor from the PREVIOUS sub-step's velocity, so it
+        // is a known positive constant inside the solve.
+        let du_prev = (u_now - u_back) / h;
+        let hc = (1.0 + hunt_crossley() * du_prev).max(0.05);
+        let fm = self.epsilon * self.mem;
         for _ in 0..NEWTON_STEPS {
-            let g = r - a + c_eff * discrete_gradient(r, u_back, k, p);
+            // Clamped at zero: felt cannot PULL.
+            let g = r - a + c_eff * (hc * discrete_gradient(r, u_back, k, p) - fm).max(0.0);
             let gp = 1.0 + c_eff * discrete_gradient_d(r, u_back, k, p);
             let step = g / gp;
             r -= step;
@@ -1227,9 +1135,43 @@ impl Hammer {
                 break;
             }
         }
-        let f = discrete_gradient(r, u_back, k, p).max(0.0);
+        let fe = (hc * discrete_gradient(r, u_back, k, p)).max(0.0);
+        // Only while it is touching: a memory that keeps charging through the
+        // gap has nothing to remember.
+        if fe > 0.0 {
+            self.mem += (fe - self.mem) * mem_a;
+        } else {
+            self.mem = 0.0;
+        }
+        let f = (fe - fm).max(0.0);
+        if two_mass {
+            let push = k_inner * (self.y_core - self.y);
+            let next = 2.0 * self.y_core - self.y_core_prev
+                - (h * h / (self.mass - m_cap).max(1e-9)) * push;
+            self.y_core_prev = self.y_core;
+            self.y_core = next;
+        }
+        // The hammer's own step on the force it exerts. With the string given
+        // the same force this is exactly `r` plus where the string went; when
+        // the patch hands the string less, the hammer still moves on what it
+        // pressed with, which is what its equation of motion says.
+        let y_next = if two_mass {
+            let push = k_inner * (self.y_core - self.y);
+            2.0 * self.y - self.y_prev - (h * h / m_cap) * (f - push)
+        } else {
+            2.0 * self.y - self.y_prev - (h * h / m_cap) * f
+        };
         self.y_prev = self.y;
-        (f, r)
+        // What the growing contact patch actually hands to the string. The
+        // hammer moves on the FULL elastic force, so its trajectory and the
+        // contact's length are untouched.
+        let m = self.patch_m;
+        let fs = if m > 0.0 {
+            f * (r.max(0.0) / self.u_ref).min(1.0).powf(m)
+        } else {
+            f
+        };
+        (f, fs, r, y_next)
     }
 
     /// Set the felt face position, after the string has yielded to the sub-step
@@ -1268,7 +1210,7 @@ impl Hammer {
     }
 
     /// Contact bookkeeping after a coupled sub-step run.
-    pub fn note_contact_result(&mut self, touched_here: bool, mean_force: f64) {
+    pub fn note_contact_result(&mut self, touched_here: bool, mean_force: f64, mean_to_string: f64) {
         if touched_here {
             self.touched = true;
             self.away = 0;
@@ -1279,6 +1221,7 @@ impl Hammer {
             }
         }
         self.last_force = mean_force;
+        self.force_to_string = mean_to_string;
     }
 }
 
@@ -2306,7 +2249,7 @@ mod tests {
                     bank.add_force(&sm.strike, f);
                     bank.tick_sub();
                 }
-                ham.note_contact_result(touched, f_sum / steps as f64);
+                ham.note_contact_result(touched, f_sum / steps as f64, f_sum / steps as f64);
                 if si < 6 {
                     eprintln!("  sample {si}: fmean {:.3e} N, strike {:.3e}, bridge {:.3e}", f_sum/steps as f64, bank.read(&sm.strike), bank.read(&sm.bridge));
                 }
@@ -3190,7 +3133,7 @@ mod ff_probe {
                             let y2 = b3.read(&m.strike);
                             h3.set_face(r + y2);
                         }
-                        h3.note_contact_result(touched, fsum / steps as f64);
+                        h3.note_contact_result(touched, fsum / steps as f64, fsum / steps as f64);
                     } else {
                         if was { b3.respace(dts, dt); was = false; }
                         b3.tick();
@@ -3440,7 +3383,7 @@ mod ff_probe {
                         let y2 = bank.read(&m.strike);
                         h.set_face(r + y2);
                     }
-                    h.note_contact_result(touched, fsum / steps as f64);
+                    h.note_contact_result(touched, fsum / steps as f64, fsum / steps as f64);
                 }
                 let periods = n as f64 / SR as f64 * d.f0;
                 row.push_str(&format!("  {periods:6.2}"));

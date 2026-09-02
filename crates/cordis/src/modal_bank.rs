@@ -284,6 +284,12 @@ impl ModalBank {
     /// Build the sub-step coefficient set: the same modes stepped at dt/steps, so
     /// the string can be advanced finely through a hammer contact. Call after
     /// `set_modes`.
+    /// How many sub-steps the sub-step coefficient set was built for.
+    #[inline]
+    pub fn sub_steps(&self) -> usize {
+        self.sub_steps
+    }
+
     pub fn set_substep(&mut self, steps: usize) {
         let steps = steps.max(1);
         self.sub_steps = steps;
