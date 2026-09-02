@@ -16,16 +16,15 @@ and damping; Chaigne & Askenfelt (JASA 1994) for the hammer felt.
 
 ## Status
 
-Not released. The model runs and the tests are green; four faults below are
-open, and the first two are large enough to hear before deciding this is fit
-for the music being made.
+Not released. The model runs and the tests are green; what is open is below,
+and the first line is what one hears.
 
 | open | |
 |---|---|
-| the treble | notes 87-108 sit 15 to 16 dB under the rest of the keyboard, and on some notes the fundamental is barely excited. It reads as thin, bell-like or plucked. The whole deficit is in the shape of the force pulse |
-| note-to-note level | the plate alone swings 24.8 dB from one semitone to the next, driven at its own bridge point. The two-point output is the cause |
-| energy at fortissimo | the hammer leaves the top note with 2.19 times the momentum it arrived with, where 2.0 is the elastic limit |
-| the modes not carried | string banks truncate at Nyquist, the plate at 16 kHz. The treble delivers two fifths of the bridge force it should |
+| the treble's upper partials | through the output, the second to fourth partials of C6 to C7 sit 8 to 30 dB above the Iowa Steinway's. No lever on the felt reaches it without costing the top octave's level |
+| a single note is nearly mono | a held note's two channels correlate at 0.9. Width comes from the notes' positions on the bridge, not from within a note |
+| the modes not carried | string banks truncate at Nyquist, the plate at 16 kHz. The treble string is 22 to 40 percent too stiff under the felt |
+| the first note-on of a slot | allocates: a nine-note treble chord's first block costs 4.5 ms against 1.3 |
 
 Deliberate, and staying: sympathetic resonance is one shared bank rather than
 87 strings, `Hybrid Preview` is a sampler and not the physics, and a live pass

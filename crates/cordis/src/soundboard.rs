@@ -311,6 +311,40 @@ const BOARD_HIGH_SHARE: f64 = 0.13;
 /// note where a null in the sum would silence it.
 const BOARD_SIDE_SHARE: f64 = 0.25;
 
+/// The bridge's own mass, as the corner above which the strings' force no
+/// longer reaches the board in full: the coupling to every mode is tapered
+/// as `1 / (1 + (f/fc)^2)`, and the direct sound with it. A bridge is a
+/// beam of tens of grams glued to the plate, and above a few kilohertz its
+/// inertia takes the force the string pulls with. Zero means no taper.
+const BRIDGE_MASS_HZ: f64 = 0.0;
+
+#[cfg(test)]
+pub(crate) static BRIDGE_MASS_OVERRIDE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(f64::to_bits(BRIDGE_MASS_HZ));
+
+#[inline]
+fn bridge_mass_hz() -> f64 {
+    #[cfg(test)]
+    {
+        f64::from_bits(BRIDGE_MASS_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed))
+    }
+    #[cfg(not(test))]
+    {
+        BRIDGE_MASS_HZ
+    }
+}
+
+/// The bridge's transmission at `f`, per direction.
+#[inline]
+fn bridge_taper(f: f64) -> f64 {
+    let fc = bridge_mass_hz();
+    if fc <= 0.0 {
+        1.0
+    } else {
+        1.0 / (1.0 + (f / fc) * (f / fc))
+    }
+}
+
 #[cfg(test)]
 pub(crate) static SIDE_SHARE_OVERRIDE: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(f64::to_bits(BOARD_SIDE_SHARE));
@@ -404,6 +438,10 @@ pub struct Soundboard {
     /// forces are heard above `DIRECT_HZ`, the board's global modes below.
     direct_hp: [[f64; 2]; 2],
     direct_hp_k: f64,
+    /// And its low-pass, the bridge's mass (`BRIDGE_MASS_HZ`), two poles per
+    /// channel; a coefficient of one means none.
+    direct_lp: [[f64; 2]; 2],
+    direct_lp_k: f64,
     /// The patch's width, which scales the side share.
     width: f64,
     /// Per-mode amplitude and phase along the bridge, so every note can be given
@@ -440,14 +478,14 @@ type AttachTables = (
     Vec<std::sync::Arc<Vec<f32>>>,
 );
 
-static ATTACH_CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<u32, AttachTables>>> =
+static ATTACH_CACHE: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<(u32, u64), AttachTables>>> =
     std::sync::OnceLock::new();
 
 /// The tables for this rate, computed once per process. `board` is used only
 /// to compute them on a miss; on a hit nothing of it is read.
 fn attachment_tables(sr: f32, board: &Soundboard) -> AttachTables {
     let cache = ATTACH_CACHE.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()));
-    let key = sr.to_bits();
+    let key = (sr.to_bits(), bridge_mass_hz().to_bits());
     if let Ok(map) = cache.lock() {
         if let Some((a, b)) = map.get(&key) {
             return (a.clone(), b.clone());
@@ -818,6 +856,12 @@ impl Soundboard {
             right_high,
             direct_hp: [[0.0; 2]; 2],
             direct_hp_k: (-std::f64::consts::TAU * DIRECT_HZ / sr as f64).exp(),
+            direct_lp: [[0.0; 2]; 2],
+            direct_lp_k: if bridge_mass_hz() > 0.0 {
+                1.0 - (-std::f64::consts::TAU * bridge_mass_hz() / sr as f64).exp()
+            } else {
+                1.0
+            },
             width: spread.clamp(0.0, 1.0),
             bridge_amp,
             bridge_phase,
@@ -1213,7 +1257,11 @@ impl Soundboard {
             st[0] = hp1 - in0;
             let hp2 = k * (st[1] + hp1);
             st[1] = hp2 - hp1;
-            *x = hp2;
+            let lp = &mut self.direct_lp[ch];
+            let kl = self.direct_lp_k;
+            lp[0] += (hp2 - lp[0]) * kl;
+            lp[1] += (lp[0] - lp[1]) * kl;
+            *x = lp[1];
         }
         let (share, gain) = (board_high_share(), direct_gain());
         let side = board_side_share() * self.width;
@@ -1429,7 +1477,7 @@ impl Soundboard {
                     .min(std::f64::consts::FRAC_PI_2)
                     .sin();
                 let edge = 1.0 - near_rim * (1.0 - edge_raw);
-                amp * edge * (phase + std::f64::consts::PI * nu * p).sin()
+                amp * edge * bridge_taper(fr) * (phase + std::f64::consts::PI * nu * p).sin()
             })
             .collect()
     }

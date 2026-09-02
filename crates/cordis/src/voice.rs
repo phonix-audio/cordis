@@ -1684,7 +1684,6 @@ impl Voice {
         self.since_strike = self.since_strike.saturating_add(1);
         let bridge_y = bridge_y_free;
         let rd = self.rd;
-        let f_hammer = self.f_hammer;
         // A damper on the string shortens every partial rather than stopping it
         // dead; off the string it is a factor of one, which costs nothing.
         let damp = if self.damping { self.damper_decay } else { 1.0 };

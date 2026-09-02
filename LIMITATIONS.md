@@ -16,88 +16,70 @@ dates in the source.
 
 ## The treble
 
-**This is the instrument's largest fault and everything else in this section is
-downstream of it.** The top of the compass is 15 to 16 dB under the rest of the
-keyboard (notes 87-108), its second partial sits at -10 to +17 dB where the Iowa
-Steinway sits at -30, and on some notes the fundamental is barely excited at
-all. It is audible: it reads as thin, bell-like or plucked rather than as a
-piano. Measured against a Gaussian pulse of this model's own contact duration
-and impulse, the whole 25 to 30 dB is in the force pulse's *shape*, and no force
-law reaches it; swept up and down with the stiffness bisected to hold the
-contact duration, the felt's exponent moves that partial by five decibels at
-best.
+The contact is integrated with the string advanced. From C5 up, the transverse
+banks tick at the hammer's sub-step spacing while the felt is on them, and the
+felt is solved at each tick against the string's real position, so the wave
+returning from the agraffe, which is what lifts the hammer off, is resolved
+where its round trip is shorter than a sample. The once-a-sample scheme stays
+below C5, where the two agree within a decibel and a bass string carries four
+hundred modes. Measured 2026-09-02 at 4 m/s, the bridge force from C6 to the
+top sits 8 dB under A4 on average with a 5 dB spread, where it sat 20 dB under
+with an 18 dB spread. C7 is strung at 9.8 cm, which halves its inharmonicity
+(B 0.0054, the octave partial 19 cents sharp) and lands its contact at 1.23
+periods against the 1.26 Chaigne and Askenfelt measured at 2.5 m/s.
 
-The cause is known, and it is not the string, the felt or the board. The
-hammer-string loop closes once per audio sample. A real hammer is lifted off by
-the wave that returns from the agraffe, and at A7 that round trip is
-`2*x_H/c = 34 us`; one and a half samples. So the model makes one clean
-half-sine where Chaigne & Askenfelt's Fig. 2 shows a train of pulses returning
-to zero between contacts, and a smooth single hump has deep spectral zeros. On
-2026-08-12 the blow was measured to offer the note's own fundamental -0.5 dB in
-the bass and **-46.1 dB at note 93**, with -22.0 to -35.7 either side of it. The
-pulse falls at 25 dB/octave between 4 and 8 kHz where a half-sine falls at 12,
-which is the 49 dB hole a middle C has there.
+Two things stay open:
 
-The reflection is not missing from the physics. A modal description *is* the
-standing waves, so every reflection is in the bank already; what is missing is
-its resolution in time, because the bank advances once per audio sample while
-the felt is integrated twenty to eighty times inside it. There is exactly one
-real fix and it is a change of structure: give the string bank a second set of
-recursion coefficients at the sub-step rate and tick it inside the contact loop.
-It would cost nothing outside contact, which is a thousandth of the engine's
-work.
+- **The partials above the fundamental are too strong.** Through the output at
+  about 5 m/s, the second, third and fourth partials of C6, D#6 and C7 sit 8
+  to 19, 18 to 26 and up to 30 dB above the Iowa Steinway's (measured
+  2026-09-02, 20.9 dB rms over the nine figures). No lever on the felt reaches
+  it: the contact patch's weighting, the felt's stiffness and its exponent,
+  Stulov's memory and Hunt-Crossley's factor were each swept through the same
+  measure, and none lowers the third partial without lengthening the contact
+  past the published band and taking the top octave's level with it. A taper
+  on the coupling for the bridge's own mass (`BRIDGE_MASS_HZ`) brings the error
+  to 12 dB at a corner of 1.8 kHz and costs the top note 11 dB; it is built and
+  off. Whatever makes a real treble pulse that smooth is not a Hertz felt on a
+  string.
+- **The first note-on of a voice slot allocates.** A nine-note treble chord's
+  first block costs 4.5 ms against a 1.3 ms budget, once per slot: the string
+  banks are cloned into a slot that has never held them.
 
-Four cheaper things were tried instead and all four diverged or regressed: a
-delay line for the returning wave (NaN on every note whose round trip fits the
-buffer; a rigid termination reflects *inverted*, so added rather than
-subtracted it is positive feedback), the residual compliance, a `t²` give
-profile, and removing the compliance. A fifth, advancing the string sub-sample
-through the contact, was retried on 2026-08-24 and parked again: it fixes the
-diagnosis (note 99's second partial goes +23.4 -> -5.0 dB at 192 kHz) but drops
-the treble 9 dB where the middle loses 1, widens the second-partial spread from
-39 to 52 dB, fails the published contact-duration guards (note 96 at 1.60 ms
-against <= 1.2 ms; A4 at 1.05 string periods against Chaigne 2016's 0.88), and
-doubles the error against the Iowa reference (13.5 -> 26.4 dB rms) because the
-sub-loop bypasses the contact-patch weighting.
-
-Two more treble faults are separate but sit in the same register:
-
-- **Inharmonicity above C6 is too high and cannot be fixed from the scale.**
-  C7 at 8.8 cm gives B = 0.0106, which stretches its octave partial 36 cents ;
-  harpsichord territory, and reported as such by ear. Lengthening the string
-  halves it and breaks the contact-duration test at note 105; keeping the
-  contact needs a 3.7 cm top string, which is not a string. Measured every way
-  round on 2026-08-21. It has to come from the felt and the hammer mass at the
-  top of the compass, not from the stringing.
-- **The treble decays too slowly.** A real C7 loses 21 dB per second; this model
-  loses 15.7. The string's own damping accounts for 4.3 dB of either, so the
-  missing 5 dB is the bridge, whose losses in the treble are about half what
-  they should be. That is its own piece of work. The margin the decay test
-  asserts is what the model honestly has rather than what a piano has, and the
-  net beside it says plainly that it cannot assert the treble outruns the bass,
-  because it does not.
+Measured and closed on 2026-09-02: the fundamental barely excited at the top
+(the contact above), the treble's decay (below), the excess momentum (below).
 
 ## Level and image
 
-**Note-to-note level is uneven, and the two-point output is why.** Driven at its
-own bridge point at its own fundamental, with no hammer and no string in the
-path, the plate alone swings **24.8 dB from one semitone to the next**. Three
-cures were built and measured and none was keepable: compressing the magnitudes
-(24.8 -> 30.6 dB; the nulls are made by the *signs*, not the magnitudes),
-averaging the ear over eight points (-> 21.2 dB, the notches merely move), and
-sharing the bridge's shape between the ears (worst jump 17.9 -> 10.7 dB, at a
-channel correlation of 0.966 against a real piano's 0.2; i.e. mono). Evenness
-and stereo width are in direct conflict for a two-point output. The honest cure
-is to read the far field as the modes' volume velocity rather than as two
-samples of the plate, which is a different output model.
+The output is not two samples of the plate. A note's direct sound is its own
+bridge force above 250 Hz, heard by a near-coincident pair of cardioids from
+where the note is pinned on the bridge; the two listening points carry the
+board's modes below 250 Hz in full and the rest at a reduced share, the same on
+both sides and as a side signal at a quarter of the width. Above 250 Hz the
+bridge's admittance is flat, so the board radiates in proportion to the force
+on it, and a note's level no longer depends on the signs a listening point
+happens to draw. Measured 2026-09-02 across the compass at velocity 90: the
+level varies by 2.8 dB rms and the worst semitone step is 4 dB, where it was
+16 dB (24.8 dB at the plate alone); a chord counts each note once. The image
+follows the pitch, 4 dB left at the bottom to 6 dB right at the top.
 
-**The stereo image wanders.** Measured note by note it sits 4.7 dB left in the
-bass, 6.1 right around D♯3, 3.8 left at D♯4, 5.3 left at D♯5 and 3.2 right at
-the top. A scale drifts from side to side at random, and no piano does that.
-Giving the ears a position on the bridge was written and measured on 2026-08-11
-and reverted: above a few hundred hertz the positional cosine turns over many
-times within a band and averages to nothing. The image cannot come from modal
-phase alone.
+**A single note is nearly mono.** The pair is coincident within 5 cm, so a held
+note's two channels correlate at 0.9 through the middle of the keyboard, where
+the two-point output gave 0.2. Width between notes comes from their positions;
+width within a note would have to come from the board's difference signal, and
+raising that share brings the wandering image back (measured 2026-09-02: at a
+share of one the mid-keyboard image alternates 4 dB left and 6 dB right from
+one note to the next). The side share is held at a quarter.
+
+**The treble's decay was double-counted, and is not now.** The termination
+loss written into the treble string modes was applied to the vertical motion
+the bridge already drains dynamically, so a C7 fell 1.6 times faster than the
+law it cites. The vertical modes now carry only what the termination takes
+beyond the plate's mean admittance; the published law acts on the unison's
+antisymmetric motion, which pushes no net force on the bridge and was never
+drained, through a cross-string damper, and in full on the horizontal bank.
+Pedalled tails measured 2026-09-02: A6 21 dB/s and D7 18 against anchors of 18
+and 21; D#6 loses 25 dB in its first second against the Iowa recording's 28.
 
 **A flat +3.27 dB is given back after the plate's damping floor.** The per-note
 make-up the floor actually needs runs 4.65 / 3.61 / 2.96 / 4.86 / 2.07 / 3.88 /
@@ -108,38 +90,13 @@ and it should not be read as one.
 
 ## Energy the model does not conserve
 
-**At fortissimo the hammer leaves with more momentum than it arrived with.** The
-top note delivers **2.19 times** the momentum it carries at 5 m/s. Two is the
-perfect elastic rebound and the limit, so 1.99 at 0.5 m/s and 1.96 at 2 m/s are
-right and 2.19 is not: the excess appears only at fortissimo and scales with the
-felt's stiffness. Measured 2026-08-13, two cheap explanations were ruled out:
-raising the contact's sub-steps from 20 to 80 leaves 2.19 unchanged to the
-second decimal, and raising the Newton iterations from 8 to 40 does the same.
-Both experiments were reverted rather than kept on the strength of a hypothesis.
-
-The obvious explanation was that the string enters the contact solve as a
-compliance `c_eff = h²/M + C/steps`, which is a lossless spring: it gives while
-the felt presses and hands the work back at the end, where a real string would
-have carried it away as travelling waves. That was tested the same day by
-zeroing the compliance, and the answer is the opposite. Without it the ratio is
-exactly 2.00 at 0.5 m/s and the scheme *runs away* at 2 and 5 m/s; ratios of
-10⁹² and 10¹⁷⁰. The compliance is not the leak, it is what holds the scheme
-together, and Bilbao's felt law is exactly conservative wherever the bare case
-is stable at all.
-
-So the 2.19 is not energy handed back by a spring. It is what is left of an
-instability the compliance suppresses without quite cancelling, which is why it
-appears at a threshold rather than drifting in with force. That is where the
-question stands. In practical terms it is a ten percent excess of impulse; 0.8
-dB; on the topmost note at fortissimo, which is not something anyone has
-claimed to hear. What makes it worth writing down is that the guard which keeps
-it honest asserts 2.2, so it sits immediately under its own limit rather than
-comfortably inside it, and it is an instability rather than a bias.
-
-Note that the source contradicts itself here. The comment beside `strike` still
-calls the lossless-spring explanation "what has NOT been tested"; the test that
-tested it is `a_hammer_gives_no_more_than_it_carries`, and it is the later of
-the two.
+**The hammer no longer leaves with more than it brought.** With the string
+banks and the hammer sharing one sub-step spacing, the momentum ratio at the
+top note is 1.93 at 5 m/s and 2.00 at 0.5 m/s, under the elastic limit at
+every dynamic (measured 2026-09-02). The 2.19 recorded before came from the
+banks being spaced at twenty sub-steps while the hammer's inertia was taken at
+forty to eighty: the felt met a hammer several times its mass, and that is also
+why the contact's length looked insensitive to the felt's stiffness.
 
 Related, and bounded rather than fixed: the bridge stiffness the explicit scheme
 uses is **not** the string's physical stiffness. The modal sum is 54 times the
@@ -158,35 +115,17 @@ three and 1.4% with ten (2026-08-13).
 The string banks are truncated at Nyquist and the plate at 16 kHz. Both are
 deliberate; both cost something specific.
 
-**The treble delivers two fifths of the bridge force it should.** The
-transmission sum converges like `1/k`, which is to say hardly at all: 420
-partials reach it in the bass and **four** at the top of the compass, where the
-partial sum is 0.0495 against a true 0.12. The missing three fifths are not
-physics, they are arithmetic that was stopped early. The symptom is visible in
-the bridge force, flat near 7 N from F1 to D♯5 and then 5.5, 2.3, 1.1, 1.0, 0.5
-where first principles say it should rise.
-
-The exact remainder is computable (`StringModes::residual_compliance`) and it
-is **switched off**. Not for the reason one would guess: the discarded modes
-start at 21.6 kHz, so over a millisecond contact they have responded many times
-over, and the blow is not too short for them. Two things stand in the way. The
-term is a *static* compliance where the one it must join is a *one-sample* one,
-and at A5 it is about twice as large, so adding it whole roughly triples the
-give the felt is pressed against. Ramping it in over the sub-steps, the obvious
-repair, was checked on paper and **does not work, so it is not worth a cycle**:
-`ω_c*h = 0.141`, so the ramp saturates by the twentieth sub-step and the term
-would be applied whole over a contact that lasts twenty to a hundred and fifty
-*samples*. That is the version that failed nine tests at once, among them the
-one that exists for exactly this.
-
-And underneath both: **the term and the felt stiffness are not independent.**
-`K` above C7 is solved from the published contact duration, and every contact
-duration this model matches was obtained with the residual absent; so `K` has
-already absorbed the give the term describes, and switching it on double-counts
-it. It cannot be switched on alone; it has to land together with a
-re-derivation of the felt anchors against the same published durations, measured
-as one change. The parameter is left plumbed through so the next attempt does
-not have to re-thread it.
+**The bridge force's remainder is added; the compliance's is not.** The
+transmission sum converges like `1/k`: 420 partials reach the bridge in the
+bass and four at the top, where the partial sum is 0.0495 against a true 0.12.
+The exact remainder for the bridge (`residual_bridge`) is added at the force of
+the sample, so the treble's bridge force no longer stops at two fifths. The
+remainder of the string's give under the felt (`StringModes::residual_compliance`)
+is still off: it is a static compliance, and the contact is now integrated at a
+microsecond, where the discarded modes, from 21.6 kHz up, have barely begun to
+move. The right form is to carry them as modes at the sub-step spacing during
+the contact. With them absent the treble string is 22 percent stiffer under the
+felt at C7 and 40 percent at the top.
 
 **The plate's modes are never retired.** The pruning is built and measured and
 not wired in, because under a pedalled storm it retires *nothing*: 3618 of 3618

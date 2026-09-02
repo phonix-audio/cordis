@@ -5417,6 +5417,59 @@ fn audit_where_the_treble_loses_its_level() {
     eprintln!("(dB relatifs a La3 ; E corde en energie, le reste en amplitude)");
 }
 
+/// The output across the compass: every note's level in stereo power over
+/// its first 0.4 s, the worst step between semitones, and where the image
+/// sits. What the direct sound and the placed pair promise, measured.
+#[test]
+#[ignore]
+fn audit_the_output_across_the_compass() {
+    let sr = 48_000.0f32;
+    let render = |note: u8| -> (f64, f64, f64) {
+        let (mut eng, tx, _mr) = CordisEngine::new_for_plugin(sr);
+        let mut p = eng.patch.clone();
+        p.mechanics = 0.0;
+        let _ = tx.send(CordisCommand::LoadPatch(Box::new(p)));
+        let _ = tx.send(CordisCommand::NoteOn(note, 90));
+        let total = (0.4 * sr) as usize;
+        let mut buf = vec![0.0f32; 256 * 2];
+        let (mut ll, mut rr, mut lr) = (0.0f64, 0.0f64, 0.0f64);
+        let mut done = 0usize;
+        while done < total {
+            buf.iter_mut().for_each(|x| *x = 0.0);
+            eng.process_audio(&mut buf, 2);
+            for c in buf.chunks(2) {
+                let (l, r) = (c[0] as f64, c[1] as f64);
+                ll += l * l;
+                rr += r * r;
+                lr += l * r;
+            }
+            done += 256;
+        }
+        let n = done as f64;
+        (
+            10.0 * (0.5 * (ll + rr) / n).max(1e-24).log10(),
+            10.0 * (ll / rr.max(1e-30)).log10(),
+            lr / (ll * rr).sqrt().max(1e-30),
+        )
+    };
+    let rows: Vec<(u8, f64, f64, f64)> = (21u8..=108).map(|n| { let (p, d, c) = render(n); (n, p, d, c) }).collect();
+    let mean = rows.iter().map(|r| r.1).sum::<f64>() / rows.len() as f64;
+    let sd = (rows.iter().map(|r| (r.1 - mean).powi(2)).sum::<f64>() / rows.len() as f64).sqrt();
+    let (mut step, mut at) = (0.0f64, 0u8);
+    for w in rows.windows(2) {
+        let d = (w[1].1 - w[0].1).abs();
+        if d > step {
+            step = d;
+            at = w[1].0;
+        }
+    }
+    eprintln!("\n level: mean {mean:.1} dBFS, sd {sd:.1} dB, worst semitone step {step:.1} dB into note {at}");
+    eprintln!(" note  level  L/R dB  corr");
+    for r in rows.iter().filter(|r| r.0 % 6 == 0) {
+        eprintln!("  {:3}  {:+5.1}  {:+5.1}  {:+5.2}", r.0, r.1 - mean, r.2, r.3);
+    }
+}
+
 /// The decay a string is ENTITLED to, note by note, against the one it gets.
 ///
 /// The level audit says the top octave is 20-30 dB down over half a second while
