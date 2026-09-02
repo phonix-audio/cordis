@@ -118,17 +118,19 @@ three and 1.4% with ten (2026-08-13).
 The string banks are truncated at Nyquist and the plate at 16 kHz. Both are
 deliberate; both cost something specific.
 
-**The bridge force's remainder is added; the compliance's is not.** The
+**Both remainders of the truncation are added.** The
 transmission sum converges like `1/k`: 420 partials reach the bridge in the
 bass and four at the top, where the partial sum is 0.0495 against a true 0.12.
 The exact remainder for the bridge (`residual_bridge`) is added at the force of
 the sample, so the treble's bridge force no longer stops at two fifths. The
 remainder of the string's give under the felt (`StringModes::residual_compliance`)
-is still off: it is a static compliance, and the contact is now integrated at a
-microsecond, where the discarded modes, from 21.6 kHz up, have barely begun to
-move. The right form is to carry them as modes at the sub-step spacing during
-the contact. With them absent the treble string is 22 percent stiffer under the
-felt at C7 and 40 percent at the top.
+joins the sub-stepped contact as a massless spring in series, its deflection
+carried from one sub-step to the next: the discarded modes start at 21.6 kHz
+and answer within a few sub-steps of a contact that lasts hundreds. With it C7's
+contact lands on the 1.26 periods Chaigne and Askenfelt measured; the top
+string is 40 percent softer under the felt than the bank alone made it, and the
+top note sits 14 dB under the compass mean, which is what a 3.5 g hammer on a
+5 cm string gives.
 
 **The plate's modes are never retired.** The pruning is built and measured and
 not wired in, because under a pedalled storm it retires *nothing*: 3618 of 3618

@@ -23,7 +23,7 @@ and the first line is what one hears.
 |---|---|
 | the treble's upper partials | through the output, the second to fourth partials of C6 to C7 sit 8 to 30 dB above the Iowa Steinway's. No lever on the felt reaches it without costing the top octave's level |
 | a single note is nearly mono | a held note's two channels correlate at 0.9. Width comes from the notes' positions on the bridge, not from within a note |
-| the modes not carried | string banks truncate at Nyquist, the plate at 16 kHz. The treble string is 22 to 40 percent too stiff under the felt |
+| the modes not carried | the plate stops at 16 kHz and never retires a mode; the strings' truncation is accounted for at the bridge and under the felt |
 | a chord's first block | nine treble notes struck in one block cost it 2.2 ms against 1.3: the contact's sub-step solve |
 
 Deliberate, and staying: sympathetic resonance is one shared bank rather than

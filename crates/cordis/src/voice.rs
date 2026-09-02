@@ -289,6 +289,10 @@ const SUB_CONTACT: bool = true;
 /// nothing audible.
 pub(crate) const SUB_CONTACT_FROM: u8 = 72;
 
+/// Whether the give of the modes above the bank's ceiling joins the
+/// sub-stepped contact (`StringModes::residual_compliance`).
+const RESIDUAL_IN_CONTACT: bool = true;
+
 #[cfg(test)]
 pub(crate) static SUB_CONTACT_OVERRIDE: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(SUB_CONTACT);
@@ -483,6 +487,9 @@ pub struct Voice {
     /// measured and wanted.
     unison_gamma: Vec<f64>,
     unison_vbar: Vec<f64>,
+    /// The deflection of the modes the banks do not carry, under the felt,
+    /// as of the last sub-step (see `advance`).
+    residual_defl: f64,
     prev_strike: f64,
     prev_strike_v: f64,
     strike_primed: bool,
@@ -600,6 +607,7 @@ impl Default for Voice {
             traj: Vec::new(),
             unison_gamma: Vec::new(),
             unison_vbar: Vec::new(),
+            residual_defl: 0.0,
             prev_strike: 0.0,
             prev_strike_v: 0.0,
             strike_primed: false,
@@ -866,6 +874,7 @@ impl Voice {
         // Between contacts the state sits at the audio spacing; the first
         // sub-step of the new blow re-spaces it (see `advance`).
         self.sub_spaced = false;
+        self.residual_defl = 0.0;
     }
 
     /// What the strings received from the felt this sample.
@@ -1719,17 +1728,22 @@ impl Voice {
                 }
                 self.sub_spaced = true;
             }
-            // What the felt pushes against over ONE sub-step: its own inertia
-            // plus the string's give at that spacing.
+            // What the felt pushes against over ONE sub-step: its own inertia,
+            // the string's give at that spacing over the modes the bank
+            // carries, and the give of the modes it does not. Those start at
+            // the bank's ceiling and answer within a few sub-steps of a
+            // contact that lasts hundreds, so they enter as a massless spring
+            // in series, its deflection carried from one sub-step to the next.
             let mut c_sub = 0.0;
+            let mut r_sub = 0.0;
             for st in self.strings.iter() {
-                // MEASURED: adding `residual_compliance` here is wrong. It is a
-                // PER-SAMPLE give, and at the sub-step spacing it swamps the
-                // modal term by the ratio of the two steps: the whole compass
-                // dropped 18 to 30 dB.
                 c_sub += st.share * st.share * st.bank.compliance_sub(&st.modes.strike);
+                r_sub += st.share * st.share * st.modes.residual_compliance;
             }
-            let c_eff = self.hammer.inertia_substep() + c_sub;
+            if !RESIDUAL_IN_CONTACT {
+                r_sub = 0.0;
+            }
+            let c_eff = self.hammer.inertia_substep() + c_sub + r_sub;
             let mut f_sum = 0.0;
             let mut fs_sum = 0.0;
             let mut touched = false;
@@ -1744,12 +1758,14 @@ impl Voice {
                 // The same felt law as the held-string path, patch weighting
                 // included: the hammer moves on the elastic force, the string
                 // receives what the contact patch passes on.
-                let (f, fs, _r, y_next) = self.hammer.felt_substep(y_free - base, c_eff);
+                let (f, fs, _r, y_next) =
+                    self.hammer.felt_substep(y_free - base + self.residual_defl, c_eff);
                 if f > 0.0 {
                     touched = true;
                 }
                 f_sum += f;
                 fs_sum += fs;
+                self.residual_defl = r_sub * fs;
                 y_free = 0.0;
                 for st in self.strings.iter_mut() {
                     y_free += st.share * st.bank.drive_tick_sub_peek(&st.modes.strike, fs * st.share);

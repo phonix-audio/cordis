@@ -178,10 +178,13 @@ fn felt_from_the_measurements(note: f64) -> (f64, f64) {
         // octave) put the top note 16 to 20 dB above every other note on the
         // keyboard: right observable, wrong shape.
         //
-        // `(1.65/1.30)⁴ = 2.6` moves the plateau to the middle of the band and
-        // leaves its flatness alone. Ramped over half an octave so C7 itself does
-        // not step.
-        const TOP_RISE: f64 = 1.8;
+        // The factor moves that plateau, ramped over half an octave so C7
+        // itself does not step. Three, with the truncated modes' give in the
+        // contact (`RESIDUAL_IN_CONTACT`): the top string is then as soft
+        // under the felt as it is, the felt is what is left to hold the
+        // contact inside the band, and past three it buys the top note under
+        // a decibel.
+        const TOP_RISE: f64 = 3.0;
         let over = ((note - ANCHORS[5].0) / 6.0).clamp(0.0, 1.0);
         return (ANCHORS[5].1 * TOP_RISE.powf(over), ANCHORS[5].2);
     }
