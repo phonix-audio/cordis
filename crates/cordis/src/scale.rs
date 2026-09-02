@@ -79,7 +79,7 @@ const CONTROL: [(f64, f64, f64, f64); 6] = [
     // has to come from the felt and the hammer mass at the top of the compass,
     // taken together — the same place the model already contradicts itself at
     // treble pianissimo.
-    (96.0, 0.088, 0.800e-3, 0.0),
+    (96.0, 0.098, 0.800e-3, 0.0),
 ];
 
 /// How many times the density of plain steel a wound string behaves as.
