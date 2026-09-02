@@ -1501,7 +1501,10 @@ impl Voice {
         if self.traj.len() != steps {
             self.traj = vec![0.0; steps];
         }
-        if self.hammer.in_contact {
+        // The trajectory feeds the held-string scheme only: a note whose
+        // contact advances the string does not read it, and evaluating the
+        // exact free response at every sub-step is a transcendental per mode.
+        if self.hammer.in_contact && !sub_contact_for(self.note) {
             let dt = 1.0 / (self.sr * steps as f64);
             for (k, slot) in self.traj.iter_mut().enumerate() {
                 let t = (k + 1) as f64 * dt;
@@ -1730,14 +1733,14 @@ impl Voice {
             let mut f_sum = 0.0;
             let mut fs_sum = 0.0;
             let mut touched = false;
+            // Press against where the string will be after its own free
+            // sub-step: the force then moves it by exactly the compliance the
+            // solve assumed. Each tick hands back the next such position.
+            let mut y_free = 0.0;
+            for st in self.strings.iter() {
+                y_free += st.share * st.bank.peek_free_sub(&st.modes.strike);
+            }
             for _ in 0..steps {
-                // Press against where the string will be after its own free
-                // sub-step: the force then moves it by exactly the compliance
-                // the solve assumed.
-                let mut y_free = 0.0;
-                for st in self.strings.iter() {
-                    y_free += st.share * st.bank.peek_free_sub(&st.modes.strike);
-                }
                 // The same felt law as the held-string path, patch weighting
                 // included: the hammer moves on the elastic force, the string
                 // receives what the contact patch passes on.
@@ -1747,9 +1750,9 @@ impl Voice {
                 }
                 f_sum += f;
                 fs_sum += fs;
+                y_free = 0.0;
                 for st in self.strings.iter_mut() {
-                    st.bank.add_force(&st.modes.strike, fs * st.share);
-                    st.bank.tick_sub();
+                    y_free += st.share * st.bank.drive_tick_sub_peek(&st.modes.strike, fs * st.share);
                 }
                 self.hammer.set_face(y_next);
             }

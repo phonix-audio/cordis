@@ -5470,6 +5470,65 @@ fn audit_the_output_across_the_compass() {
     }
 }
 
+/// What a chord's first block costs against the block's budget, bass and
+/// treble, with the note-on inside it.
+#[test]
+#[ignore]
+fn audit_the_attack_cost() {
+    let sr = 48_000.0f32;
+    for (label, notes) in [
+        ("bass 24..51", (24u8..=51).step_by(3).collect::<Vec<_>>()),
+        ("treble 84..108", (84u8..=108).step_by(3).collect()),
+        ("one note 96", vec![96u8]),
+    ] {
+        let (mut eng, tx, _mr) = CordisEngine::new_for_plugin(sr);
+        {
+            let mut p = eng.patch.clone();
+            p.mechanics = 0.0;
+            let _ = tx.send(CordisCommand::LoadPatch(Box::new(p)));
+        }
+        const BLK: usize = 64;
+        let mut buf = vec![0.0f32; BLK * 2];
+        for _ in 0..50 {
+            eng.process_audio(&mut buf, 2);
+        }
+        for &n in &notes {
+            let _ = tx.send(CordisCommand::NoteOn(n, 100));
+        }
+        let mut first = Vec::new();
+        {
+            // The note-ons alone, drained into a one-frame block.
+            let mut one = vec![0.0f32; 2];
+            let t0 = std::time::Instant::now();
+            eng.process_audio(&mut one, 2);
+            first.push(format!("[note-ons + 1 frame {:.0}]", t0.elapsed().as_secs_f64() * 1e6));
+        }
+        for _ in 0..6 {
+            let t0 = std::time::Instant::now();
+            eng.process_audio(&mut buf, 2);
+            first.push(format!("{:.0}", t0.elapsed().as_secs_f64() * 1e6));
+        }
+        // The same chord again, on slots that have held strings before.
+        for &n in &notes {
+            let _ = tx.send(CordisCommand::NoteOff(n));
+        }
+        for _ in 0..400 {
+            eng.process_audio(&mut buf, 2);
+        }
+        for &n in &notes {
+            let _ = tx.send(CordisCommand::NoteOn(n, 100));
+        }
+        let t0 = std::time::Instant::now();
+        eng.process_audio(&mut buf, 2);
+        let again = t0.elapsed().as_secs_f64() * 1e6;
+        eprintln!(
+            "  {label:<22} first blocks {} us, the chord again {again:.0} us, budget {:.0} us",
+            first.join(" "),
+            BLK as f64 / sr as f64 * 1e6
+        );
+    }
+}
+
 /// The decay a string is ENTITLED to, note by note, against the one it gets.
 ///
 /// The level audit says the top octave is 20-30 dB down over half a second while

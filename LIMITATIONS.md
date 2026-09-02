@@ -42,9 +42,12 @@ Two things stay open:
   to 12 dB at a corner of 1.8 kHz and costs the top note 11 dB; it is built and
   off. Whatever makes a real treble pulse that smooth is not a Hertz felt on a
   string.
-- **The first note-on of a voice slot allocates.** A nine-note treble chord's
-  first block costs 4.5 ms against a 1.3 ms budget, once per slot: the string
-  banks are cloned into a slot that has never held them.
+- **A chord's first block costs.** Nine treble notes struck inside one
+  64-frame block cost it 2.2 ms against a budget of 1.3, ten bass notes 2.0;
+  the contact's sub-step solve is the cost, and it runs only on the samples
+  the felt is on. It was 4.9 ms before the exact free trajectory, a
+  transcendental per mode per sub-step, stopped being evaluated for a scheme
+  that never read it.
 
 Measured and closed on 2026-09-02: the fundamental barely excited at the top
 (the contact above), the treble's decay (below), the excess momentum (below).

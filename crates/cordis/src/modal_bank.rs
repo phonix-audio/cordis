@@ -348,6 +348,25 @@ impl ModalBank {
         acc
     }
 
+    /// One sub-step with a force at `shape` applied to it, returning the
+    /// read-point value the string will show after the NEXT free sub-step:
+    /// `add_force`, `tick_sub` and `peek_free_sub` in one pass over the modes.
+    #[inline]
+    pub fn drive_tick_sub_peek(&mut self, shape: &[f64], f: f64) -> f64 {
+        let n = self.n.min(shape.len());
+        let mut acc = 0.0;
+        for i in 0..n {
+            let s = shape[i];
+            let q = self.a1s[i] * self.q1[i] - self.a2s[i] * self.q2[i]
+                + self.bs[i] * (self.drive[i] + s * f);
+            self.q2[i] = self.q1[i];
+            self.q1[i] = q;
+            self.drive[i] = 0.0;
+            acc += s * (self.a1s[i] * q - self.a2s[i] * self.q2[i]);
+        }
+        acc
+    }
+
     /// Advance every mode by ONE sub-step (dt/sub_steps), using the sub-step
     /// coefficients. Shares the same q1/q2/drive state as `tick`, so a run of
     /// sub-steps through a contact and the ordinary once-per-sample ticks outside

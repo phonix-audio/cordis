@@ -558,6 +558,8 @@ pub struct Hammer {
     patch_m: f64,
     /// Precomputed from `TAU` and the sample rate.
     decay: f64,
+    /// The memory's one-pole coefficient at the sub-step spacing.
+    mem_a: f64,
     dt: f64,
     /// Position of the felt's face, relative to the string's rest line.
     y: f64,
@@ -738,6 +740,7 @@ impl Hammer {
         self.stiffness = f_work / u_work.powf(self.exponent);
         self.dt = 1.0 / sr as f64;
         self.decay = (-self.dt / TAU).exp();
+        self.mem_a = 1.0 - (-self.dt / (TAU * self.steps.max(1) as f64)).exp();
         // The felt's face starts on the string's rest line, and one sub-step
         // earlier it was `v·h` short of it. That pair IS the approach velocity:
         // the scheme reads it as a second difference and needs nothing else.
@@ -1088,7 +1091,7 @@ impl Hammer {
     pub fn felt_substep(&mut self, string_pos: f64, c_eff: f64) -> (f64, f64, f64, f64) {
         let steps = self.steps.max(1);
         let h = self.dt / steps as f64;
-        let mem_a = 1.0 - (-h / TAU).exp();
+        let mem_a = self.mem_a;
         let (k, p) = (self.stiffness, self.exponent);
         let (frac, res) = felt_cap();
         let two_mass = frac > 0.0;
@@ -1116,17 +1119,43 @@ impl Hammer {
         let du_prev = (u_now - u_back) / h;
         let hc = (1.0 + hunt_crossley() * du_prev).max(0.05);
         let fm = self.epsilon * self.mem;
+        // The discrete gradient and its derivative from one power per
+        // iteration: the potential at `u_back` is fixed through the solve, and
+        // the force at `r` is the potential's own derivative.
+        let phi_b = felt_potential(u_back, k, p);
+        let gradient = |r: f64| -> (f64, f64) {
+            let d = r - u_back;
+            if d.abs() < 1.0e-14 {
+                let m = 0.5 * (r + u_back);
+                (felt_force(m, k, p), 0.5 * p * k * m.max(0.0).powf(p - 1.0))
+            } else {
+                let (phi_r, f_r) = if r > 0.0 {
+                    let up = r.powf(p);
+                    (k / (p + 1.0) * up * r, k * up)
+                } else {
+                    (0.0, 0.0)
+                };
+                let dphi = phi_r - phi_b;
+                (dphi / d, (f_r * d - dphi) / (d * d))
+            }
+        };
+        let mut dg = 0.0;
         for _ in 0..NEWTON_STEPS {
+            let (g_val, g_d) = gradient(r);
+            dg = g_val;
             // Clamped at zero: felt cannot PULL.
-            let g = r - a + c_eff * (hc * discrete_gradient(r, u_back, k, p) - fm).max(0.0);
-            let gp = 1.0 + c_eff * discrete_gradient_d(r, u_back, k, p);
+            let g = r - a + c_eff * (hc * g_val - fm).max(0.0);
+            let gp = 1.0 + c_eff * g_d;
             let step = g / gp;
             r -= step;
             if step.abs() < 1.0e-16 {
                 break;
             }
         }
-        let fe = (hc * discrete_gradient(r, u_back, k, p)).max(0.0);
+        if r != a || dg == 0.0 {
+            dg = gradient(r).0;
+        }
+        let fe = (hc * dg).max(0.0);
         // Only while it is touching: a memory that keeps charging through the
         // gap has nothing to remember.
         if fe > 0.0 {
