@@ -374,6 +374,11 @@ impl Ear {
     }
 }
 
+/// The lowest fundamental whose unison carries the cross-string damper: the
+/// register where an undrained antisymmetric unison rings on as an organ
+/// where a real treble note dies.
+const UNISON_DAMP_FROM_HZ: f64 = 350.0;
+
 const DAMPER_SLOW: f64 = 0.99985;
 const DAMPER_FAST: f64 = 0.9990;
 
@@ -472,6 +477,12 @@ pub struct Voice {
     /// once per sample while a hammer is down. The exact solution rather than an
     /// extrapolation of it — see `ModalBank::free_at`.
     traj: Vec<f64>,
+    /// The termination's loss on the unison's antisymmetric motion, per mode
+    /// (`-gamma * (v - mean v)`), and the mean velocity it is taken against.
+    /// Empty below the treble, where a unison's two-stage decay is what is
+    /// measured and wanted.
+    unison_gamma: Vec<f64>,
+    unison_vbar: Vec<f64>,
     prev_strike: f64,
     prev_strike_v: f64,
     strike_primed: bool,
@@ -587,6 +598,8 @@ impl Default for Voice {
             attach_f32: std::sync::Arc::new(Vec::new()),
             rd: [(0.0, 0.0, 0.0); 3],
             traj: Vec::new(),
+            unison_gamma: Vec::new(),
+            unison_vbar: Vec::new(),
             prev_strike: 0.0,
             prev_strike_v: 0.0,
             strike_primed: false,
@@ -982,14 +995,39 @@ impl Voice {
             // 9.6 dB/s and D7 13.5 against the real ~18 and ~21; 1.65 is the
             // value the law needs to land both anchors at once.
             const TERMINATION_Y_FACTOR: f64 = 1.65;
-            let alpha_full = d.tension
+            // The published law with the plate's mean admittance is what the
+            // dynamic coupling already drains from the motion that pushes the
+            // bridge. The vertical modes get only what the termination takes
+            // beyond it; the horizontal bank, one-way and never drained, gets
+            // the whole factor; the unison's antisymmetric motion gets the
+            // published law through `unison_gamma` below.
+            let alpha_law = d.tension
                 * (modes.bridge_ratio * modes.bridge_ratio)
-                * (BOARD_REY_REF * TERMINATION_Y_FACTOR)
+                * BOARD_REY_REF
                 / d.length;
+            let alpha_full = alpha_law * TERMINATION_Y_FACTOR;
+            let alpha_local = alpha_law * (TERMINATION_Y_FACTOR - 1.0);
             let sigma_of = |m: &crate::modal_bank::Mode| {
+                let chi = termination_load(m.w / std::f64::consts::TAU);
+                m.sigma + chi * chi * alpha_local
+            };
+            let sigma_horiz = |m: &crate::modal_bank::Mode| {
                 let chi = termination_load(m.w / std::f64::consts::TAU);
                 m.sigma + chi * chi * alpha_full
             };
+            if i == 0 {
+                self.unison_gamma.clear();
+                self.unison_vbar.clear();
+                if n > 1 && d.f0 >= UNISON_DAMP_FROM_HZ {
+                    // `q'' + 2 sigma q' + w^2 q = F`: a force `-gamma q'` adds
+                    // `gamma / 2` to `sigma`, so the law's rate takes twice it.
+                    self.unison_gamma.extend(modes.modes.iter().map(|m| {
+                        let chi = termination_load(m.w / std::f64::consts::TAU);
+                        2.0 * chi * chi * alpha_law
+                    }));
+                    self.unison_vbar.resize(modes.modes.len(), 0.0);
+                }
+            }
             // ── The DECOUPLED board: the read-back's drain, written down ──
             //
             // In the exact model the vertical polarisation loses energy to the
@@ -1088,7 +1126,7 @@ impl Voice {
                 .iter()
                 .map(|m| crate::modal_bank::Mode {
                     w: m.w * HORIZ_DETUNE,
-                    sigma: sigma_of(m),
+                    sigma: sigma_horiz(m),
                 })
                 .collect();
             horiz.set_modes(&hm, sr);
@@ -1739,6 +1777,17 @@ impl Voice {
             }
         }
         let sub_running = self.sub_running;
+        // The unison's mean velocity, mode by mode, for the cross-string
+        // damper below. Not through a contact: the banks are then advanced at
+        // the sub-step spacing and the drive it would add is already spent.
+        let cross = !self.unison_gamma.is_empty() && !sub_running;
+        if cross {
+            self.unison_vbar.iter_mut().for_each(|v| *v = 0.0);
+            let w = 1.0 / self.strings.len() as f64;
+            for s in self.strings.iter() {
+                s.bank.velocity_accumulate(&mut self.unison_vbar, w);
+            }
+        }
         // The sub-stepped contact above is what set this sample's force, so the
         // other polarisation and the truncation term read it from there and not
         // from the value captured before the loop ran.
@@ -1753,6 +1802,9 @@ impl Voice {
         let mut bridge_force = 0.0;
         for (i, s) in self.strings.iter_mut().enumerate() {
             let (_, at_bridge, stretch) = rd[i];
+            if cross {
+                s.bank.add_cross_damping(&self.unison_gamma, &self.unison_vbar);
+            }
             // The complete interaction: what the string pulls with, less the
             // stiffness it lends the bridge by being tied to it. Exactly the
             // affine form `prepare` hands the engine, so the displacement it

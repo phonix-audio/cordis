@@ -430,6 +430,31 @@ impl ModalBank {
         }
     }
 
+    /// Add `weight` times every mode's velocity into `out`, over the live
+    /// prefix. The unison's mean velocity, mode by mode, is built from this.
+    #[inline]
+    pub fn velocity_accumulate(&self, out: &mut [f64], weight: f64) {
+        let n = self.n_active.min(out.len());
+        let w = weight * self.sr;
+        for i in 0..n {
+            out[i] += w * (self.q1[i] - self.q2[i]);
+        }
+    }
+
+    /// A damper on the motion this bank has that `reference` has not: the
+    /// force `-gamma * (v - reference)` on every mode, for the next tick. The
+    /// unison's antisymmetric motion pushes no net force on the bridge and so
+    /// is never drained by it; this is the loss the termination gives it.
+    #[inline]
+    pub fn add_cross_damping(&mut self, gamma: &[f64], reference: &[f64]) {
+        let n = self.n_active.min(gamma.len()).min(reference.len());
+        let sr = self.sr;
+        for i in 0..n {
+            let v = (self.q1[i] - self.q2[i]) * sr;
+            self.drive[i] -= gamma[i] * (v - reference[i]);
+        }
+    }
+
     /// Advance every mode by one sample.
     #[inline]
     pub fn tick(&mut self) {
