@@ -300,6 +300,9 @@ pub struct CordisEngine {
     /// place to pay for them.
     pool: Option<crate::parallel::VoicePool>,
     pool_ears: Vec<(f64, f64)>,
+    /// The coupled pool's per-frame output parts: the listening points over
+    /// the global and the localised modes, and the notes' direct sound.
+    pool_mix: Vec<[f64; 6]>,
     /// Voice-major force rows for the block-major decoupled step (see the
     /// block in `process`); kept so the audio thread never allocates.
     block_forces: Vec<f64>,
@@ -418,6 +421,7 @@ impl CordisEngine {
             retire_rel: crate::voice::RETIRE_REL,
             pool: None,
             pool_ears: Vec::new(),
+            pool_mix: Vec::new(),
             block_forces: Vec::new(),
             block_forces32: Vec::new(),
             pool_shapes_f32: Vec::with_capacity(MAX_VOICES),
@@ -969,6 +973,16 @@ impl CordisEngine {
         }
     }
 
+    /// Re-place every sounding note's microphones after the width moved.
+    fn place_listeners(&mut self) {
+        let (w, sr) = (self.patch.width as f64, self.sample_rate as f64);
+        for v in self.voices.iter_mut() {
+            if v.active {
+                v.set_listener(Soundboard::bridge_position(v.note), w, sr);
+            }
+        }
+    }
+
     fn note_on(&mut self, note: u8, vel: u8) {
         if !(21..=108).contains(&note) {
             return;
@@ -1073,6 +1087,11 @@ impl CordisEngine {
                 self.patch.damper as f64,
                 self.sample_rate,
             );
+            self.voices[i].set_listener(
+                Soundboard::bridge_position(note),
+                self.patch.width as f64,
+                self.sample_rate as f64,
+            );
             self.mech.key_struck(note, nvel as f32);
             if !self.held.contains(&note) {
                 self.held.push(note);
@@ -1105,6 +1124,11 @@ impl CordisEngine {
         let i = self.proto_for(note);
         let p = self.protos[i].take().expect("just built");
         self.voices[slot].start_from(&p, speed, voicing, damper, sr);
+        self.voices[slot].set_listener(
+            Soundboard::bridge_position(note),
+            self.patch.width as f64,
+            sr as f64,
+        );
         self.voices[slot].retire_rel = self.retire_rel;
         self.protos[i] = Some(p);
         self.mech.key_struck(note, nvel as f32);
@@ -1377,6 +1401,7 @@ impl CordisEngine {
                         // was a tenth of a second of work on the audio thread,
                         // and it silenced the instrument mid-note.
                         self.board.set_spread(w as f64);
+                        self.place_listeners();
                     }
                 }
                 CordisCommand::SetDamper(x) => self.patch.damper = x.clamp(0.0, 1.0),
@@ -1397,11 +1422,13 @@ impl CordisEngine {
                     // identical to a tenth of a decibel.
                     self.mech.level = self.patch.mechanics;
                     self.board.set_spread(width as f64);
+                    self.place_listeners();
                 }
                 CordisCommand::ProgramChange(i) => {
                     if let Some(p) = self.pc_bank.get(i as usize).cloned() {
                         self.patch = p;
                         self.board.set_spread(self.patch.width as f64);
+                        self.place_listeners();
                     }
                 }
                 CordisCommand::SetHybrid { on, max_hold_secs } => {
@@ -1617,15 +1644,15 @@ impl CordisEngine {
                 }
             }
             if enrol {
-                self.pool_ears.clear();
-                self.pool_ears.resize(frames, (0.0, 0.0));
+                self.pool_mix.clear();
+                self.pool_mix.resize(frames, [0.0; 6]);
                 let pool = self.pool.as_mut().expect("just made");
                 pool.run_block(
                     &mut self.voices,
                     &mut self.board,
                     &self.pool_idx,
                     &self.pool_shapes,
-                    &mut self.pool_ears,
+                    &mut self.pool_mix,
                 );
                 pooled = true;
             }
@@ -1773,11 +1800,25 @@ impl CordisEngine {
                     self.coupling_phase = 0;
                 }
             }
-            let (bl, br) = if pooled {
+            let (bl, br) = if pooled && self.decoupled {
                 let (vl, vr) = self.pool_ears[f];
                 self.board.radiate_pair(vl, vr)
-            } else {
+            } else if pooled {
+                let m = self.pool_mix[f];
+                self.board.radiate_mix([m[0], m[1], m[2], m[3]], (m[4], m[5]))
+            } else if self.decoupled {
                 self.board.advance()
+            } else {
+                let (mut dl, mut dr) = (0.0f64, 0.0f64);
+                for v in self.voices.iter() {
+                    if v.active {
+                        let (a, b) = v.heard();
+                        dl += a;
+                        dr += b;
+                    }
+                }
+                let ears = self.board.advance_split();
+                self.board.radiate_mix(ears, (dl, dr))
             };
             if self.bridge_tap {
                 // Diagnostic: hear the force the strings put ON the bridge, before
@@ -2234,17 +2275,48 @@ mod tests {
 
     /// The two channels are different signals, because they are two places on
     /// one plate. A pan pot cannot produce this.
+    /// The image follows the keyboard: a note is heard from where it is
+    /// pinned on the bridge, so the bass sits left and the treble right, the
+    /// pair collapses to one capsule at zero width, and opens with it.
     #[test]
     fn the_output_is_genuinely_stereo() {
-        let out = render(60, 100, 1.0);
-        let (mut ll, mut rr, mut lr) = (0.0f64, 0.0f64, 0.0f64);
-        for &(l, r) in out.iter() {
-            ll += (l * l) as f64;
-            rr += (r * r) as f64;
-            lr += (l * r) as f64;
-        }
-        let corr = lr / (ll.sqrt() * rr.sqrt()).max(1e-30);
-        assert!(corr.abs() < 0.6, "the two channels correlate at {corr:.3}");
+        let render = |note: u8, vel: u8, width: f32| -> Vec<(f32, f32)> {
+            let (mut eng, tx, _mr) = CordisEngine::new_for_plugin(SR);
+            let mut p = eng.patch.clone();
+            p.width = width;
+            p.mechanics = 0.0;
+            let _ = tx.send(CordisCommand::LoadPatch(Box::new(p)));
+            let _ = tx.send(CordisCommand::NoteOn(note, vel));
+            let n = (SR * 0.5) as usize;
+            let mut out = Vec::with_capacity(n);
+            let mut buf = vec![0.0f32; 256 * 2];
+            while out.len() < n {
+                buf.iter_mut().for_each(|x| *x = 0.0);
+                eng.process_audio(&mut buf, 2);
+                for fr in buf.chunks(2) {
+                    out.push((fr[0], fr[1]));
+                }
+            }
+            out
+        };
+        let stats = |out: &[(f32, f32)]| -> (f64, f64) {
+            let (mut ll, mut rr, mut lr) = (0.0f64, 0.0f64, 0.0f64);
+            for &(l, r) in out.iter() {
+                ll += (l * l) as f64;
+                rr += (r * r) as f64;
+                lr += (l * r) as f64;
+            }
+            (10.0 * (ll / rr.max(1e-30)).log10(), lr / (ll.sqrt() * rr.sqrt()).max(1e-30))
+        };
+        let (bass_lr, _) = stats(&render(31, 100, 1.0));
+        let (mid_lr, mid_corr) = stats(&render(60, 100, 1.0));
+        let (top_lr, _) = stats(&render(100, 100, 1.0));
+        assert!(bass_lr > 1.5, "the bass sits {bass_lr:.1} dB left");
+        assert!(top_lr < -1.5, "the treble sits {top_lr:.1} dB right");
+        assert!(mid_lr.abs() < 2.5, "middle C sits {mid_lr:.1} dB off centre");
+        assert!(mid_corr < 0.97, "a note at full width is mono: correlation {mid_corr:.3}");
+        let (mono_lr, mono_corr) = stats(&render(60, 100, 0.0));
+        assert!(mono_corr > 0.999 && mono_lr.abs() < 0.1, "zero width is not mono: {mono_corr:.4}, {mono_lr:.2} dB");
     }
 
     /// The sustain pedal keeps a released note ringing, and lifting it stops it.
@@ -2739,9 +2811,12 @@ fn flipping_the_decoupled_board_off_restores_the_exact_engine() {
 #[test]
 fn the_decoupled_board_keeps_the_notes_decay() {
     let sr = 48_000.0f32;
+    // Compared on the bridge force: the decay the coupling sets, before the
+    // listening points.
     let render = |dec: bool| -> Vec<f32> {
         let (mut eng, tx, _mr) = CordisEngine::new_for_plugin(sr);
         eng.set_decoupled(dec);
+        eng.set_bridge_tap(true);
         let _ = tx.send(CordisCommand::NoteOn(69, 100));
         let total = sr as usize * 2;
         let mut out = Vec::with_capacity(total);

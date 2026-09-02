@@ -291,6 +291,73 @@ const RAD_FLOOR: f64 = 0.0;
 /// back.
 const RAD_PLATEAU: f64 = 0.784;
 
+/// What the notes' direct sound (their bridge forces above `DIRECT_HZ`) is
+/// worth against the board's global modes at the listening points, set so the
+/// instrument's level across the compass is what it was with the two points
+/// alone (the compass mean, measured).
+const DIRECT_GAIN: f64 = 2.1e-3;
+/// Where the direct sound takes over from the board's global modes at the
+/// listening points. Below it the board moves as a whole and every note has
+/// partials enough for no listening point's null to matter; above it a note
+/// is heard by the force it puts on the bridge.
+const DIRECT_HZ: f64 = 250.0;
+/// The share of the board's modes above `DIRECT_HZ` mixed in with the direct
+/// sound, the same on both sides: the colour of the wood, kept under the
+/// direct sound so a listening point's null cannot take a note away.
+const BOARD_HIGH_SHARE: f64 = 0.13;
+/// The share of the difference between the two listening points, at full
+/// width: what the two sides of the board do differently is the width of a
+/// single note. It moves the image, not the level: a null in it narrows a
+/// note where a null in the sum would silence it.
+const BOARD_SIDE_SHARE: f64 = 0.25;
+
+#[cfg(test)]
+pub(crate) static SIDE_SHARE_OVERRIDE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(f64::to_bits(BOARD_SIDE_SHARE));
+
+#[inline]
+fn board_side_share() -> f64 {
+    #[cfg(test)]
+    {
+        f64::from_bits(SIDE_SHARE_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed))
+    }
+    #[cfg(not(test))]
+    {
+        BOARD_SIDE_SHARE
+    }
+}
+
+#[cfg(test)]
+pub(crate) static DIRECT_GAIN_OVERRIDE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(f64::to_bits(DIRECT_GAIN));
+#[cfg(test)]
+pub(crate) static HIGH_SHARE_OVERRIDE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(f64::to_bits(BOARD_HIGH_SHARE));
+
+#[inline]
+fn direct_gain() -> f64 {
+    #[cfg(test)]
+    {
+        f64::from_bits(DIRECT_GAIN_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed))
+    }
+    #[cfg(not(test))]
+    {
+        DIRECT_GAIN
+    }
+}
+
+#[inline]
+fn board_high_share() -> f64 {
+    #[cfg(test)]
+    {
+        f64::from_bits(HIGH_SHARE_OVERRIDE.load(std::sync::atomic::Ordering::Relaxed))
+    }
+    #[cfg(not(test))]
+    {
+        BOARD_HIGH_SHARE
+    }
+}
+
 /// The law's own low end, for the record: at A0 (27.5 Hz) it is -32.8 dB against
 /// the plateau, against the shelf's -30.8. The bass fundamental therefore sits 2
 /// dB lower and every partial above it rises 6 dB per octave instead of 3.8,
@@ -325,6 +392,20 @@ pub struct Soundboard {
     pub left: BoardPoint,
     pub right: BoardPoint,
     freqs: Vec<f64>,
+    /// The two listening points split at `DIRECT_HZ`: the global modes below
+    /// it, which move the whole board and are what the board itself sounds
+    /// like, and those above it, which colour the direct sound each note is
+    /// heard with (`radiate_mix`).
+    left_low: Vec<f64>,
+    right_low: Vec<f64>,
+    left_high: Vec<f64>,
+    right_high: Vec<f64>,
+    /// The direct sound's high-pass, one state per channel: the notes' bridge
+    /// forces are heard above `DIRECT_HZ`, the board's global modes below.
+    direct_hp: [[f64; 2]; 2],
+    direct_hp_k: f64,
+    /// The patch's width, which scales the side share.
+    width: f64,
     /// Per-mode amplitude and phase along the bridge, so every note can be given
     /// its OWN place on it.
     bridge_amp: Vec<f64>,
@@ -630,39 +711,11 @@ impl Soundboard {
         // its channels correlating at −0.73: hollow, and gone in mono.
         let mut s_left = 0xAAAA_5555_0000_9999u64;
         let mut s_alt = 0x9999_0000_5555_AAAAu64;
-        // ── The weak and uneven notes live HERE, and this is what is known ──
-        //
-        // The sound is `Σ φ(bridge)·φ(ear)` over the modes. The two shapes are
-        // drawn independently, so every term's sign is a coin toss, the sum is
-        // Rayleigh-distributed, and its nulls are deep. A treble note's
-        // fundamental is one frequency: when a null lands on it the note
-        // disappears. Measured with no hammer and no string
-        // (`what_the_plate_gives_each_note`), driving each note's own bridge point
-        // at its own f0, the plate alone swings **24.8 dB from one semitone to the
-        // next**, and the keyboard reproduces that pattern note for note. That is
-        // the whole of the "notes are often too weak" complaint, and the string is
-        // innocent: its bridge force falls a smooth 15 dB from C5 to C7, against a
-        // real Steinway's 10.8.
-        //
-        // Three cures were built and measured, and none can be kept:
-        //
-        //   * compress the magnitudes towards their rms — 30.4 dB of keyboard
-        //     spread before, 30.6 after. The nulls are made by the SIGNS.
-        //   * average the ear over eight independent points — 24.8 -> 21.2 dB at
-        //     the plate; the notches merely move, because averaging independent
-        //     draws leaves each mode's sign random.
-        //   * give the ear a share of the BRIDGE's own shape, so that part of the
-        //     sum is a sum of squares and cannot cancel. This WORKS on the fault
-        //     (worst semitone-to-semitone jump 17.9 -> 10.7 dB at the keyboard)
-        //     and it destroys the stereo: a coherent positive component dominates
-        //     the output, so the two sides correlate at 0.966 even with the common
-        //     share down at 0.45, against the 0.2 a real piano measures.
-        //
-        // The two goals are in direct conflict for a TWO-POINT output. A real
-        // board escapes it by radiating from its whole surface with a far higher
-        // modal count; the honest cure is to read the far field as the modes'
-        // volume velocity rather than as two samples of the plate, which is a
-        // different output model and a bigger piece of work than a constant.
+        // Two listening points sample the board's field; a sum over modes of
+        // random sign has deep nulls, and a treble note's fundamental is one
+        // frequency. So the points carry the board's global modes below
+        // `DIRECT_HZ` in full and the rest as colour, while a note's level
+        // comes from its own bridge force (`radiate_mix`).
         let l = base(&mut s_left);
         let alt = base(&mut s_alt);
         let sep = spread.clamp(0.0, 1.0);
@@ -679,6 +732,16 @@ impl Soundboard {
                 a * theta.cos() + b * theta.sin()
             })
             .collect();
+        let band = |v: &Vec<f64>, high: bool| -> Vec<f64> {
+            v.iter()
+                .zip(freqs.iter())
+                .map(|(w, &fr)| if (fr >= DIRECT_HZ) == high { *w } else { 0.0 })
+                .collect()
+        };
+        let left_low = band(&l, false);
+        let right_low = band(&right, false);
+        let left_high = band(&l, true);
+        let right_high = band(&right, true);
         let left = BoardPoint { shape: l };
         let right = BoardPoint { shape: right };
 
@@ -710,29 +773,8 @@ impl Soundboard {
         let bridge_phase: Vec<f64> =
             (0..bridge.shape.len()).map(|_| hashed(&mut s_phase) * std::f64::consts::PI).collect();
 
-        // ── Giving the ears a POSITION was tried and reverted ─────────────
-        //
-        // The image is erratic: measured note by note it sits 4.7 dB left in the
-        // bass, 6.1 right around D#3, 3.8 LEFT at D#4, 5.3 left at D#5 and 3.2
-        // right at the top. A scale wanders from side to side at random and no
-        // piano does that; on a grand the bass bridge is at one end and the long
-        // bridge runs away from it, so a note's place follows its pitch.
-        //
-        // The obvious cure is to read each ear at its own position along the
-        // bridge, `sin(φ + πνp)`, exactly as `attachment` reads the note. It was
-        // written and measured on 2026-08-11 and it does NOT work, for a reason
-        // worth keeping: the positional term averages to `cos(πν(p_ear − p_note))`
-        // over the random modal phases, and `ν` grows with frequency. Above a few
-        // hundred hertz that cosine turns over many times within a band, so it
-        // averages to nothing — only the lowest modes carry any geometry at all,
-        // and there are far too few of them to hold an image. It did fix the
-        // bass, which came out consistently left, and left the rest jumping.
-        //
-        // So the image cannot come from modal phase alone. What a real
-        // instrument's stereo actually is, is two microphones at a DISTANCE from
-        // a source that is spread over two metres — a delay and a level
-        // difference per note, not a modal coincidence. That is the shape of the
-        // fix and it is not a tweak to these weights.
+        // The image is not read off these points: each note is placed by
+        // where it is pinned on the bridge (`Voice::set_listener`).
 
         // Radiation efficiency. What a listener hears is not the board's
         // velocity: it is the pressure that velocity radiates, and a plate is a
@@ -770,6 +812,13 @@ impl Soundboard {
             left,
             right,
             freqs,
+            left_low,
+            right_low,
+            left_high,
+            right_high,
+            direct_hp: [[0.0; 2]; 2],
+            direct_hp_k: (-std::f64::consts::TAU * DIRECT_HZ / sr as f64).exp(),
+            width: spread.clamp(0.0, 1.0),
             bridge_amp,
             bridge_phase,
             right_alt: alt,
@@ -816,10 +865,16 @@ impl Soundboard {
     /// plate mid-note into the bargain.
     pub fn set_spread(&mut self, spread: f64) {
         let sep = spread.clamp(0.0, 1.0);
+        self.width = sep;
         for (i, &fr) in self.freqs.iter().enumerate() {
             let t = (fr / (TRANSITION_HZ * (1.05 - sep))).min(1.0);
             let theta = 0.5 * std::f64::consts::PI * t * sep;
             self.right.shape[i] = self.left.shape[i] * theta.cos() + self.right_alt[i] * theta.sin();
+            if fr < DIRECT_HZ {
+                self.right_low[i] = self.right.shape[i];
+            } else {
+                self.right_high[i] = self.right.shape[i];
+            }
         }
     }
 
@@ -1058,6 +1113,29 @@ impl Soundboard {
     ///
     /// The ranges given to concurrent callers must tile `0..live()` without
     /// overlapping.
+    /// `range_advance` reading the listening points split at `DIRECT_HZ`, as
+    /// `advance_split` does.
+    pub unsafe fn range_advance_split(
+        &self,
+        lo: usize,
+        hi: usize,
+        points: &[std::sync::Arc<Vec<f64>>],
+        forces: &[f64],
+    ) -> [f64; 4] {
+        unsafe {
+            self.bank.range_drive_tick_read4(
+                lo,
+                hi,
+                points,
+                forces,
+                &self.left_low,
+                &self.right_low,
+                &self.left_high,
+                &self.right_high,
+            )
+        }
+    }
+
     pub unsafe fn range_advance(
         &self,
         lo: usize,
@@ -1089,14 +1167,62 @@ impl Soundboard {
         self.bank.add_force(point, force);
     }
 
-    /// Advance the plate and read what it radiates, the forces having already
-    /// been applied at each note's own point.
+    /// Advance the plate without reading it: the output is read at each
+    /// note's own point (`Voice::heard`) and radiated with `radiate_pair`.
+    #[inline]
+    pub fn step(&mut self) {
+        self.bank.tick();
+    }
+
+    /// Advance the plate and read what it radiates at the two fixed listening
+    /// points, the forces having already been applied at each note's own point.
     #[inline]
     pub fn advance(&mut self) -> (f64, f64) {
         let (vl, vr) = self
             .bank
             .tick_read2_velocity(&self.left.shape, &self.right.shape);
         self.radiate(vl, vr)
+    }
+
+    /// Advance the plate and read it at the two listening points, the modes
+    /// below and above `DIRECT_HZ` apart: [left low, right low, left high,
+    /// right high], unradiated. Pairs with `radiate_mix`.
+    #[inline]
+    pub fn advance_split(&mut self) -> [f64; 4] {
+        self.bank
+            .tick_read4_velocity(&self.left_low, &self.right_low, &self.left_high, &self.right_high)
+    }
+
+    /// What the pair hears: the board's global modes at the listening points,
+    /// the notes' direct sound (their bridge forces, placed per note by
+    /// `Voice::heard`) above `DIRECT_HZ`, and a share of the board's other
+    /// modes for the colour and the ringing of the wood. The direct sound is
+    /// what keeps every note at its own level: the bridge's admittance is
+    /// flat, so the board radiates in proportion to the force on it, and a
+    /// force needs no luck with a listening point's modal signs.
+    #[inline]
+    pub fn radiate_mix(&mut self, ears: [f64; 4], direct: (f64, f64)) -> (f64, f64) {
+        let k = self.direct_hp_k;
+        let mut d = [direct.0, direct.1];
+        for (ch, x) in d.iter_mut().enumerate() {
+            // Two poles at `DIRECT_HZ`, so the direct sound hands over to the
+            // board's global modes at 12 dB per octave.
+            let st = &mut self.direct_hp[ch];
+            let in0 = *x;
+            let hp1 = k * (st[0] + in0);
+            st[0] = hp1 - in0;
+            let hp2 = k * (st[1] + hp1);
+            st[1] = hp2 - hp1;
+            *x = hp2;
+        }
+        let (share, gain) = (board_high_share(), direct_gain());
+        let side = board_side_share() * self.width;
+        let mid = 0.5 * (ears[2] + ears[3]);
+        let dif = 0.5 * (ears[2] - ears[3]);
+        self.radiate(
+            ears[0] + share * mid + side * dif + gain * d[0],
+            ears[1] + share * mid - side * dif + gain * d[1],
+        )
     }
 
     /// Take the strings' force, advance the plate, read what it radiates on
@@ -1211,7 +1337,7 @@ impl Soundboard {
     /// They are separate pieces of wood, so there is a real gap between the two
     /// runs — which is why the bass of a piano couples to the rest of the
     /// instrument so much more loosely than its own length would suggest.
-    fn bridge_position(note: u8) -> f64 {
+    pub fn bridge_position(note: u8) -> f64 {
         let n = note.clamp(21, 108) as f64;
         if n <= 40.0 {
             // Bass bridge: A0 to E2, its own short run.
@@ -1248,6 +1374,8 @@ impl Soundboard {
         let i = note.clamp(LOWEST_NOTE, HIGHEST_NOTE) - LOWEST_NOTE;
         std::sync::Arc::clone(&self.attachments[i as usize])
     }
+
+
 
     fn compute_attachment(&self, note: u8) -> Vec<f64> {
         let p = Self::bridge_position(note);

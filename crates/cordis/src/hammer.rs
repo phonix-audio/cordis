@@ -859,9 +859,6 @@ impl Hammer {
         // the divide should not be one branch away from a zero either way.
         let steps = self.steps.max(1);
         let h = self.dt / steps as f64;
-        // One pole at the felt's relaxation time, for the hereditary term below.
-        let mem_a = 1.0 - (-h / TAU).exp();
-        let (k, p) = (self.stiffness, self.exponent);
         // ── The string GIVES, and the contact has to know it ──────────────
         //
         // Bilbao's scheme makes the contact incapable of creating energy, and
@@ -975,14 +972,8 @@ impl Hammer {
         // The cap's own mass is what the contact pushes against; the core follows
         // through the inner spring. With the fraction at zero both collapse back
         // to the single mass this had before.
-        let (frac, res) = felt_cap();
-        let two_mass = frac > 0.0;
-        let m_cap = if two_mass { self.mass * frac } else { self.mass };
-        let k_inner = if two_mass {
-            m_cap * (std::f64::consts::TAU * res).powi(2)
-        } else {
-            0.0
-        };
+        let (frac, _) = felt_cap();
+        let m_cap = if frac > 0.0 { self.mass * frac } else { self.mass };
         let c_eff = h * h / m_cap + string_compliance / steps as f64;
         let mut f_mean = 0.0;
         let mut f_string = 0.0;

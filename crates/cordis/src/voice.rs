@@ -313,6 +313,67 @@ pub(crate) fn sub_contact_for(note: u8) -> bool {
     sub_contact_on() && note >= SUB_CONTACT_FROM
 }
 
+/// The listener: a near-coincident pair of cardioids splayed 110 degrees,
+/// `MIC_STANDOFF` metres in front of the middle of the bridge line, which
+/// spans `MIC_SPAN`. A note is heard from where it is pinned: its angle off
+/// the pair's axis sets each capsule's level through the cardioid pattern,
+/// so the image follows the pitch, and the capsules' spacing gives the two
+/// channels a delay difference of a twentieth of a millisecond at most, so
+/// the mono sum keeps every note. The patch's width scales the splay and the
+/// spacing; at zero the pair is one capsule and the output is mono.
+const MIC_SPAN: f64 = 2.0;
+const MIC_STANDOFF: f64 = 1.0;
+const MIC_SPACING: f64 = 0.05;
+const MIC_SPLAY: f64 = 55.0 * std::f64::consts::PI / 180.0;
+const SOUND_SPEED: f64 = 343.0;
+/// What the board's velocity at a note's own point is worth against the two
+/// fixed listening points it replaced, so the instrument's level is unchanged:
+/// the mean over the compass, measured, sat 12.4 dB higher before the
+/// microphones' distances took their share.
+const OWN_POINT_GAIN: f64 = 0.43;
+
+/// One microphone's view of a voice: a delay and a level.
+#[derive(Clone, Default)]
+struct Ear {
+    buf: Vec<f64>,
+    at: usize,
+    delay: usize,
+    gain: f64,
+}
+
+impl Ear {
+    /// The longest delay any note can need at this rate, so the buffer is
+    /// sized once.
+    fn capacity(sr: f64) -> usize {
+        (MIC_SPACING / SOUND_SPEED * sr).ceil() as usize + 2
+    }
+
+    fn set(&mut self, delay_s: f64, gain: f64, sr: f64) {
+        let need = Self::capacity(sr);
+        if self.buf.len() != need {
+            self.buf = vec![0.0; need];
+            self.at = 0;
+        }
+        self.delay = ((delay_s * sr).round().max(0.0) as usize).min(need - 1);
+        self.gain = gain * OWN_POINT_GAIN;
+    }
+
+    #[inline]
+    fn push(&mut self, x: f64) -> f64 {
+        let n = self.buf.len();
+        if n == 0 {
+            return x * self.gain;
+        }
+        self.buf[self.at] = x;
+        let out = self.buf[(self.at + n - self.delay) % n];
+        self.at += 1;
+        if self.at == n {
+            self.at = 0;
+        }
+        out * self.gain
+    }
+}
+
 const DAMPER_SLOW: f64 = 0.99985;
 const DAMPER_FAST: f64 = 0.9990;
 
@@ -435,6 +496,10 @@ pub struct Voice {
     /// Whether the transverse banks currently hold their state at the sub-step
     /// spacing (inside a contact) rather than the audio spacing.
     sub_spaced: bool,
+    /// What the two microphones hear of this note this sample.
+    ear_l: Ear,
+    ear_r: Ear,
+    heard: (f64, f64),
     /// Calibration multiplier on the felt's stiffness.
     pub felt_scale: f64,
     /// Samples since the hammer last struck. Fades the duplex in over the first
@@ -536,6 +601,9 @@ impl Default for Voice {
             contact_c: 0.0,
             sub_running: false,
             sub_spaced: false,
+            ear_l: Ear::default(),
+            ear_r: Ear::default(),
+            heard: (0.0, 0.0),
             since_strike: 0,
             decoupled: false,
         }
@@ -790,6 +858,39 @@ impl Voice {
     /// What the strings received from the felt this sample.
     pub fn string_force(&self) -> f64 {
         self.hammer.force_to_string_now(self.hammer.last_force)
+    }
+
+    /// Place the two microphones for this note: `p` is where it is pinned
+    /// along the bridge (0 at the bass end, 1 at the treble end), `width` the
+    /// pair's spacing as a fraction of the bridge line.
+    pub fn set_listener(&mut self, p: f64, width: f64, sr: f64) {
+        let w = width.clamp(0.0, 1.0);
+        let x = (p - 0.5) * MIC_SPAN;
+        let r = (MIC_STANDOFF * MIC_STANDOFF + x * x).sqrt();
+        // Angle of the note off the pair's axis, positive to the right.
+        let theta = x.atan2(MIC_STANDOFF);
+        let splay = MIC_SPLAY * w;
+        let cardioid = |off: f64| 0.5 * (1.0 + off.cos());
+        // The common flight time is dropped; only the difference between the
+        // capsules is kept, the nearer one hearing the note first.
+        let lag = 0.5 * MIC_SPACING * w * theta.sin().abs() / SOUND_SPEED;
+        let (lag_l, lag_r) = if theta > 0.0 { (lag, 0.0) } else { (0.0, lag) };
+        let level = MIC_STANDOFF / r;
+        self.ear_l.set(lag_l, level * cardioid(theta + splay), sr);
+        self.ear_r.set(lag_r, level * cardioid(theta - splay), sr);
+    }
+
+    /// What the pair hears of this note directly this sample: its bridge
+    /// force, delayed and scaled per capsule. Above the transition the board
+    /// radiates from the region under the bridge, and with a flat admittance
+    /// there what it radiates is the force it is driven with; reading it this
+    /// way gives every note its own level rather than the luck of a
+    /// listening point's modal signs, and counts each note once in a chord.
+    /// The board's own modes reach the output through the fixed listening
+    /// points (`Soundboard::radiate_mix`).
+    #[inline]
+    pub fn heard(&self) -> (f64, f64) {
+        self.heard
     }
 
     /// Build every bank this note needs, leaving them silent.
@@ -1455,9 +1556,22 @@ impl Voice {
         }
     }
 
-    /// Apply this sample's forces and step every string forward.
+    /// Advance the note one sample against the board and report the force it
+    /// pulls the bridge with, keeping what the pair hears of it.
     #[inline]
     fn advance(&mut self, bridge_y_free: f64, board_compliance: f64) -> f64 {
+        let force = self.advance_strings(bridge_y_free, board_compliance);
+        // The direct sound: the force this note puts on the bridge, heard by
+        // the pair from where the note is pinned. Strings woken by sympathy
+        // are heard through the board alone.
+        let heard_in = if self.sympathetic { 0.0 } else { force };
+        self.heard = (self.ear_l.push(heard_in), self.ear_r.push(heard_in));
+        force
+    }
+
+    /// Apply this sample's forces and step every string forward.
+    #[inline]
+    fn advance_strings(&mut self, bridge_y_free: f64, board_compliance: f64) -> f64 {
         // ── The bridge solved WITH the string, not one sample behind it ────
         //
         // The string's pull on the bridge is affine in where the bridge is:

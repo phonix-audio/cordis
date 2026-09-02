@@ -231,6 +231,11 @@ struct Job {
     n_live: usize,
     /// Each participant's partial ear velocities, combined by the audio thread.
     ears: *mut (f64, f64),
+    /// Per part, the listening points over the localised modes, when the plate
+    /// is read split (`kind` 0); the pair above is then the global modes.
+    ears_high: *mut (f64, f64),
+    /// Per part, the sum of what its voices' microphones heard this frame.
+    heard: *mut (f64, f64),
     /// Relative throughputs, and where each participant reports the time its
     /// share of the strings took this block.
     weights: *const f64,
@@ -266,6 +271,8 @@ impl Job {
         shapes: std::ptr::null(),
         n_live: 0,
         ears: std::ptr::null_mut(),
+        ears_high: std::ptr::null_mut(),
+        heard: std::ptr::null_mut(),
         weights: std::ptr::null(),
         spent: std::ptr::null_mut(),
         frames: 0,
@@ -308,6 +315,8 @@ pub struct VoicePool {
     /// Scratch the audio thread fills before each block.
     pub forces: Vec<f64>,
     pub ears: Vec<(f64, f64)>,
+    ears_high: Vec<(f64, f64)>,
+    heard: Vec<(f64, f64)>,
     weights: Vec<f64>,
     spent: Vec<f64>,
     /// Block-mode buffers: per-participant ear rows and tile scratch. Sized
@@ -361,6 +370,8 @@ impl VoicePool {
             share_cap: usize::MAX,
             forces: vec![0.0; max_voices],
             ears: vec![(0.0, 0.0); workers + 1],
+            ears_high: vec![(0.0, 0.0); workers + 1],
+            heard: vec![(0.0, 0.0); workers + 1],
             weights: vec![1.0; workers + 1],
             spent: vec![0.0; workers + 1],
             block_ears: Vec::new(),
@@ -398,7 +409,7 @@ impl VoicePool {
         board: &mut crate::soundboard::Soundboard,
         live_idx: &[usize],
         shapes: &[std::sync::Arc<Vec<f64>>],
-        out_ears: &mut [(f64, f64)],
+        out_ears: &mut [[f64; 6]],
     ) {
         let parts = participants_for(live_idx.len(), self.effective_workers());
         let frames = out_ears.len();
@@ -411,6 +422,8 @@ impl VoicePool {
             shapes: shapes.as_ptr(),
             n_live: live_idx.len(),
             ears: self.ears.as_mut_ptr(),
+            ears_high: self.ears_high.as_mut_ptr(),
+            heard: self.heard.as_mut_ptr(),
             weights: self.weights.as_ptr(),
             spent: self.spent.as_mut_ptr(),
             frames,
@@ -440,14 +453,24 @@ impl VoicePool {
             unsafe { voice_phase(0, &job) };
             mine += t.elapsed().as_secs_f64();
             self.barrier.wait();
+            // What the voices' microphones heard is summed here, between the
+            // barriers: every part's voice phase is complete, and none writes
+            // its slot again before the second barrier lets it into the next
+            // frame's voice phase.
+            let mut acc = [0.0f64; 6];
+            for k in 0..parts {
+                acc[4] += self.heard[k].0;
+                acc[5] += self.heard[k].1;
+            }
             unsafe { plate_phase(0, &job) };
             self.barrier.wait();
-            let (mut vl, mut vr) = (0.0, 0.0);
-            for &(l, r) in self.ears.iter().take(parts) {
-                vl += l;
-                vr += r;
+            for k in 0..parts {
+                acc[0] += self.ears[k].0;
+                acc[1] += self.ears[k].1;
+                acc[2] += self.ears_high[k].0;
+                acc[3] += self.ears_high[k].1;
             }
-            *out = (vl, vr);
+            *out = acc;
         }
         self.spent[0] = mine;
         self.rebalance(live_idx.len(), parts);
@@ -496,6 +519,8 @@ impl VoicePool {
             shapes: std::ptr::null(),
             n_live: live_idx.len(),
             ears: self.ears.as_mut_ptr(),
+            ears_high: std::ptr::null_mut(),
+            heard: std::ptr::null_mut(),
             weights: self.weights.as_ptr(),
             spent: self.spent.as_mut_ptr(),
             frames,
@@ -583,6 +608,7 @@ impl VoicePool {
 unsafe fn voice_phase(k: usize, job: &Job) {
     let weights = unsafe { std::slice::from_raw_parts(job.weights, job.parts) };
     let (lo, hi) = share_weighted(job.n_live, k, weights);
+    let mut heard = (0.0f64, 0.0f64);
     for s in lo..hi {
         let vi = unsafe { *job.idx.add(s) };
         let v = unsafe { &mut *job.voices.add(vi) };
@@ -596,6 +622,12 @@ unsafe fn voice_phase(k: usize, job: &Job) {
         let (y, c) = board.read_and_compliance_at(&v.attach);
         let f = v.tick(y, c);
         unsafe { *job.forces.add(s) = f };
+        let (l, r) = v.heard();
+        heard.0 += l;
+        heard.1 += r;
+    }
+    if !job.heard.is_null() {
+        unsafe { *job.heard.add(k) = heard };
     }
 }
 
@@ -608,8 +640,9 @@ unsafe fn plate_phase(k: usize, job: &Job) {
     let (lo, hi) = share(board.live(), k, job.parts);
     let shapes = unsafe { std::slice::from_raw_parts(job.shapes, job.n_live) };
     let forces = unsafe { std::slice::from_raw_parts(job.forces, job.n_live) };
-    let ears = unsafe { board.range_advance(lo, hi, shapes, forces) };
-    unsafe { *job.ears.add(k) = ears };
+    let e = unsafe { board.range_advance_split(lo, hi, shapes, forces) };
+    unsafe { *job.ears.add(k) = (e[0], e[1]) };
+    unsafe { *job.ears_high.add(k) = (e[2], e[3]) };
 }
 
 /// One participant's share of the strings, for the WHOLE block: every voice

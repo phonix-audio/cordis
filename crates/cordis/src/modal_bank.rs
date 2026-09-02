@@ -473,6 +473,54 @@ impl ModalBank {
     /// both: the ranges it hands out tile `0..n_active` and never overlap, and
     /// every participant is inside the same barrier pair.
     #[allow(clippy::mut_from_ref)]
+    /// `range_drive_tick_read2` over two pairs of shapes.
+    #[allow(clippy::too_many_arguments)]
+    pub unsafe fn range_drive_tick_read4(
+        &self,
+        lo: usize,
+        hi: usize,
+        points: &[std::sync::Arc<Vec<f64>>],
+        forces: &[f64],
+        va: &[f64],
+        vb: &[f64],
+        vc: &[f64],
+        vd: &[f64],
+    ) -> [f64; 4] {
+        debug_assert!(lo <= hi && hi <= self.n_active);
+        let n = hi - lo;
+        if n == 0 {
+            return [0.0; 4];
+        }
+        let q1 = unsafe { std::slice::from_raw_parts_mut(self.q1.as_ptr().add(lo) as *mut f64, n) };
+        let q2 = unsafe { std::slice::from_raw_parts_mut(self.q2.as_ptr().add(lo) as *mut f64, n) };
+        let dr = unsafe { std::slice::from_raw_parts_mut(self.drive.as_ptr().add(lo) as *mut f64, n) };
+        let (a1, a2, bc) = (&self.a1[lo..hi], &self.a2[lo..hi], &self.b[lo..hi]);
+        let (va, vb, vc, vd) = (&va[lo..hi], &vb[lo..hi], &vc[lo..hi], &vd[lo..hi]);
+        for (p, &f) in points.iter().zip(forces.iter()) {
+            if f == 0.0 || p.len() < hi {
+                continue;
+            }
+            let sh = &p[lo..hi];
+            for i in 0..n {
+                dr[i] += sh[i] * f;
+            }
+        }
+        let mut r = [0.0f64; 4];
+        for i in 0..n {
+            let prev = q1[i];
+            let q = a1[i] * prev - a2[i] * q2[i] + bc[i] * dr[i];
+            let step = q - prev;
+            r[0] += va[i] * step;
+            r[1] += vb[i] * step;
+            r[2] += vc[i] * step;
+            r[3] += vd[i] * step;
+            q2[i] = prev;
+            q1[i] = q;
+            dr[i] = 0.0;
+        }
+        r.map(|x| x * self.sr)
+    }
+
     pub unsafe fn range_drive_tick_read2(
         &self,
         lo: usize,
@@ -843,6 +891,30 @@ impl ModalBank {
     /// and this bank is 29 kB, so the third walk is reading it back out of L2,
     /// not out of cache. Same arithmetic in the same order, one walk.
     #[inline]
+    /// `tick_read2_velocity` over two pairs of shapes at once: the ears over
+    /// the global modes and over the rest.
+    pub fn tick_read4_velocity(&mut self, va: &[f64], vb: &[f64], vc: &[f64], vd: &[f64]) -> [f64; 4] {
+        let n = self.n;
+        let (a1, a2, bc) = (&self.a1[..n], &self.a2[..n], &self.b[..n]);
+        let (va, vb, vc, vd) = (&va[..n], &vb[..n], &vc[..n], &vd[..n]);
+        let drive = &mut self.drive[..n];
+        let (q1, q2) = (&mut self.q1[..n], &mut self.q2[..n]);
+        let mut r = [0.0f64; 4];
+        for i in 0..n {
+            let prev = q1[i];
+            let q = a1[i] * prev - a2[i] * q2[i] + bc[i] * drive[i];
+            let step = q - prev;
+            r[0] += va[i] * step;
+            r[1] += vb[i] * step;
+            r[2] += vc[i] * step;
+            r[3] += vd[i] * step;
+            q2[i] = prev;
+            q1[i] = q;
+            drive[i] = 0.0;
+        }
+        r.map(|x| x * self.sr)
+    }
+
     pub fn tick_read2_velocity(&mut self, va: &[f64], vb: &[f64]) -> (f64, f64) {
         let n = self.n;
         let (a1, a2, bc) = (&self.a1[..n], &self.a2[..n], &self.b[..n]);
