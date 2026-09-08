@@ -30,6 +30,14 @@ const KEYBOARD_H: f32 = 156.0;
 pub struct CordisApp {
     /// Lamp click pending: the plugin moves the host param, not us.
     wants_hybrid: Option<bool>,
+    /// A factory preset pick pending. Same rule as the lamp: the editor asks,
+    /// the plugin moves the parameter, and the parameter is the only thing
+    /// that reaches the engine and the chain.
+    wants_preset: Option<i32>,
+    /// Which page the body shows: 0 the instrument, 1 the effects.
+    tab: u8,
+    fx_dirty: bool,
+    fx_page: crate::fx_page::FxPageState,
     tx: mpsc::Sender<CordisCommand>,
     meter_reader: SharedReader<CordisMeterState>,
     cached_meter: CordisMeterState,
@@ -54,6 +62,10 @@ impl CordisApp {
         let preset_names = presets.iter().map(|p| p.name.clone()).collect();
         Self {
             wants_hybrid: None,
+            wants_preset: None,
+            tab: 0,
+            fx_dirty: false,
+            fx_page: Default::default(),
             tx,
             meter_reader,
             cached_meter: CordisMeterState::default(),
@@ -105,7 +117,14 @@ impl CordisApp {
             self.sync_cooldown -= 1;
         } else if adopt_ok {
             if let Some(ref ep) = self.cached_meter.patch_snapshot {
+                // Everything EXCEPT the chain. The engine is handed a whole
+                // patch and mirrors one back, but it owns no effects and runs
+                // none; adopting its copy of `fx` would erase whatever the FX
+                // page just set, one frame after it was set. The chain travels
+                // on its own channel, `set_fx`, from the side that runs it.
+                let fx = std::mem::take(&mut self.patch.fx);
                 self.patch = ep.clone();
+                self.patch.fx = fx;
             }
         }
     }
@@ -194,9 +213,21 @@ impl CordisApp {
                     Pos2::new(right.left() - 20.0, body.bottom()),
                 );
 
-                self.draw_left(ui, left);
-                self.draw_stage(ui, stage);
-                self.draw_right(ui, right);
+                if self.tab == 1 {
+                    // The effects take the whole body: neither column has room
+                    // left, and four effects need more than either could give.
+                    let page = Rect::from_min_max(
+                        Pos2::new(body.left() + 20.0, body.top()),
+                        Pos2::new(body.right() - 20.0, body.bottom()),
+                    );
+                    if crate::fx_page::draw(ui, page, &mut self.patch.fx, &mut self.fx_page) {
+                        self.fx_dirty = true;
+                    }
+                } else {
+                    self.draw_left(ui, left);
+                    self.draw_stage(ui, stage);
+                    self.draw_right(ui, right);
+                }
                 self.draw_keyboard(ui, strip);
             });
     }
@@ -250,6 +281,30 @@ impl CordisApp {
         self.wants_hybrid.take()
     }
 
+    pub fn take_wants_preset(&mut self) -> Option<i32> {
+        self.wants_preset.take()
+    }
+
+    /// Whether the FX page moved something since this was last asked.
+    pub fn take_fx_changed(&mut self) -> bool {
+        std::mem::take(&mut self.fx_dirty)
+    }
+
+    /// Adopt the chain the host side is running.
+    ///
+    /// Called when a preset change replaced it, which is the one case the
+    /// editor cannot see for itself: a preset can be changed by automation,
+    /// with no click in this window.
+    pub fn set_fx(&mut self, spec: phonix_fx::fx_chain::FxChainSpec) {
+        self.patch.fx = spec;
+        self.fx_dirty = false;
+    }
+
+    /// The chain as the editor holds it.
+    pub fn fx(&self) -> &phonix_fx::fx_chain::FxChainSpec {
+        &self.patch.fx
+    }
+
     fn draw_header(&mut self, ui: &mut Ui, rect: Rect) {
         let res = header::draw(
             ui,
@@ -259,6 +314,7 @@ impl CordisApp {
             self.cached_meter.active_voices,
             self.cached_meter.hybrid,
             self.cached_meter.bank_fill,
+            self.tab,
         );
         if res.preview_toggled {
             // NOT sent to the engine from here. The lamp used to send
@@ -271,9 +327,17 @@ impl CordisApp {
         }
         if let Some(i) = res.preset_selected {
             if let Some(p) = self.presets.get(i).cloned() {
-                self.patch = p.clone();
-                self.send(CordisCommand::LoadPatch(Box::new(p)));
+                // Shown here, but NOT sent from here. The plugin moves the
+                // `preset` parameter, which loads the patch and fills the
+                // curated chain in one place; sending LoadPatch directly would
+                // engage the patch and leave the chain behind, exactly the
+                // desynchronisation the lamp used to have.
+                self.patch = p;
+                self.wants_preset = Some(i as i32 + 1);
             }
+        }
+        if let Some(t) = res.tab_selected {
+            self.tab = t;
         }
         if res.save_clicked {
             crate::preset_io::save_patch_to_disk(&self.patch, "Cordis", &self.patch.name);
@@ -455,6 +519,48 @@ mod tests {
         app.refresh_meters(true);
         assert!((app.patch.voicing - 0.83).abs() < 1e-4);
         assert!((app.patch.unison_detune - 4.5).abs() < 1e-4);
+    }
+
+    /// The engine mirror must not carry the chain back.
+    ///
+    /// The engine is handed a whole patch and publishes one back, effects
+    /// field included, but it owns no effects and runs none. Adopting its copy
+    /// wholesale erased an FX edit one frame after it was made -- the reverb
+    /// snapped back to whatever the preset said, while you were still holding
+    /// the control. This is that bug, pinned.
+    #[test]
+    fn the_engine_mirror_does_not_erase_an_fx_edit() {
+        use phonix_fx::fx_params::pid;
+
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let (mut writer, reader) = meter_channel::<CordisMeterState>();
+        let mut app = CordisApp::new(tx, reader);
+
+        // What the engine last saw: the preset, room reverb.
+        let engine_patch = CordisPatch::default();
+        let room = engine_patch.fx.slots[2]
+            .params.iter().find(|(k, _)| *k == pid::REVERB_TYPE).unwrap().1;
+        {
+            let s = writer.edit();
+            s.patch_snapshot = Some(engine_patch);
+            writer.publish();
+        }
+
+        // What the page just set: a different reverb.
+        app.set_fx(CordisPatch::default().fx);
+        let slot = &mut app.patch.fx.slots[2];
+        for e in slot.params.iter_mut() {
+            if e.0 == pid::REVERB_TYPE {
+                e.1 = room + 4.0;
+            }
+        }
+
+        app.sync_cooldown = 0;
+        app.refresh_meters(true);
+
+        let after = app.patch.fx.slots[2]
+            .params.iter().find(|(k, _)| *k == pid::REVERB_TYPE).unwrap().1;
+        assert_eq!(after, room + 4.0, "the mirror put the preset's reverb back");
     }
 
     /// The window is drawn for one size; if the constants and the plugin's

@@ -63,6 +63,13 @@ pub struct CordisPatch {
     /// Fine tuning, in cents.
     pub tune: f32,
     pub gain: f32,
+    /// The master chain this patch is heard through: shelf, glue, room,
+    /// ceiling. Appended, and empty by default, so a patch written before it
+    /// existed opens with no chain and sounds exactly as it did.
+    ///
+    /// Described, never run. The host builds the live chain from it.
+    #[serde(default)]
+    pub fx: phonix_fx::fx_chain::FxChainSpec,
 }
 
 impl Default for CordisPatch {
@@ -77,6 +84,12 @@ impl Default for CordisPatch {
             release_noise: default_release_noise(),
             tune: 0.0,
             gain: 0.9,
+            // The default patch IS the first factory preset -- same name,
+            // same values -- so it carries the same chain. Distinct from the
+            // `#[serde(default)]` above, which is per FIELD: a patch written
+            // before `fx` existed still deserialises to an EMPTY chain and
+            // keeps sounding as it did.
+            fx: crate::fx::concert_hall(),
         }
     }
 }
@@ -90,7 +103,9 @@ impl Default for CordisPatch {
 /// what varies between two well-kept pianos, or between the same piano on two
 /// different days of a technician's work.
 pub fn factory_presets() -> Vec<CordisPatch> {
-    let mk = |name: &str, voicing: f32, detune: f32, width: f32, damper: f32| CordisPatch {
+    use crate::fx::{chain, Room};
+    let mk = |name: &str, voicing: f32, detune: f32, width: f32, damper: f32,
+              fx: phonix_fx::fx_chain::FxChainSpec| CordisPatch {
         name: name.to_string(),
         voicing,
         unison_detune: detune,
@@ -100,18 +115,32 @@ pub fn factory_presets() -> Vec<CordisPatch> {
         release_noise: default_release_noise(),
         tune: 0.0,
         gain: 0.9,
+        fx,
     };
+    // The room each one is heard in. It follows the microphones: the closer
+    // they are, the less of the room reaches them, and the more low end the
+    // shelf has to take back.
+    let hall = |mix: f32| chain(-3.0, -18.0, Room { size: 0.35, decay: 0.40, mix });
     vec![
-        mk("Concert Grand", 0.5, 1.0, 0.7, 0.5),
-        mk("Concert Grand, Bright", 0.78, 1.0, 0.7, 0.5),
-        mk("Concert Grand, Mellow", 0.24, 0.9, 0.7, 0.5),
-        mk("Close Mics", 0.55, 1.0, 0.25, 0.5),
-        mk("Player's Seat", 0.45, 1.2, 0.9, 0.5),
-        mk("Salon", 0.4, 1.4, 0.55, 0.45),
-        mk("Tuned Dead", 0.5, 0.0, 0.7, 0.5),
-        mk("Wide Unison", 0.5, 3.0, 0.8, 0.5),
-        mk("Long Dampers", 0.45, 1.0, 0.7, 0.15),
-        mk("Tight Dampers", 0.5, 1.0, 0.7, 0.9),
+        mk("Concert Grand", 0.5, 1.0, 0.7, 0.5, hall(0.22)),
+        mk("Concert Grand, Bright", 0.78, 1.0, 0.7, 0.5, hall(0.24)),
+        mk("Concert Grand, Mellow", 0.24, 0.9, 0.7, 0.5, hall(0.18)),
+        // Close in: proximity puts more weight low, and almost no room.
+        mk("Close Mics", 0.55, 1.0, 0.25, 0.5,
+           chain(-5.0, -18.0, Room { size: 0.20, decay: 0.30, mix: 0.10 })),
+        // Where the player sits: the lid, and the room behind it.
+        mk("Player's Seat", 0.45, 1.2, 0.9, 0.5,
+           chain(-3.0, -18.0, Room { size: 0.45, decay: 0.45, mix: 0.28 })),
+        // A small bright room rather than a hall.
+        mk("Salon", 0.4, 1.4, 0.55, 0.45,
+           chain(-2.5, -16.0, Room { size: 0.30, decay: 0.35, mix: 0.26 })),
+        // Dead means dead, including the room.
+        mk("Tuned Dead", 0.5, 0.0, 0.7, 0.5,
+           chain(-3.0, -18.0, Room { size: 0.25, decay: 0.30, mix: 0.06 })),
+        mk("Wide Unison", 0.5, 3.0, 0.8, 0.5, hall(0.24)),
+        // The strings ring on by themselves; the room would only crowd them.
+        mk("Long Dampers", 0.45, 1.0, 0.7, 0.15, hall(0.16)),
+        mk("Tight Dampers", 0.5, 1.0, 0.7, 0.9, hall(0.20)),
     ]
 }
 
@@ -210,6 +239,51 @@ mod tests {
                 .unwrap_or_else(|| panic!("{key} missing or out of order in {json}"));
             at += found + needle.len();
         }
+    }
+
+    /// Each factory preset carries its own chain: that is what "the presets
+    /// have effects" means.
+    #[test]
+    fn every_factory_preset_carries_its_own_chain() {
+        for p in factory_presets() {
+            assert_eq!(p.fx.slots.len(), crate::fx::FX_SLOTS, "{}", p.name);
+        }
+    }
+
+    /// A fresh instance shows the first preset's name, so it must sound like
+    /// it, effects included. Anything else is a plugin that says one thing and
+    /// plays another.
+    #[test]
+    fn the_default_patch_is_the_first_preset_chain_included() {
+        let d = CordisPatch::default();
+        let first = &factory_presets()[0];
+        assert_eq!(d.name, first.name);
+        assert_eq!(d.fx, first.fx);
+    }
+
+    /// The container's default and the field's serde default are NOT the same
+    /// thing, and the difference is the whole compatibility story: a patch
+    /// written before `fx` existed deserialises to an empty chain.
+    #[test]
+    fn a_patch_written_before_fx_existed_has_no_chain() {
+        let legacy = r#"{"name":"Concert Grand","voicing":0.5,"unison_detune":1.0,
+                         "width":0.7,"damper":0.5,"tune":0.0,"gain":0.9}"#;
+        let p: CordisPatch = serde_json::from_str(legacy).unwrap();
+        assert!(p.fx.slots.is_empty());
+    }
+
+    /// The rooms differ, or the presets would not be carrying anything of
+    /// their own. Close Mics is the driest and Player's Seat the wettest.
+    #[test]
+    fn the_presets_are_not_all_heard_in_the_same_room() {
+        use phonix_fx::fx_params::pid;
+        let mix = |name: &str| -> f32 {
+            let p = factory_presets().into_iter().find(|p| p.name == name).unwrap();
+            p.fx.slots[2].params.iter().find(|(k, _)| *k == pid::REVERB_MIX).unwrap().1
+        };
+        assert!(mix("Close Mics") < mix("Concert Grand"));
+        assert!(mix("Concert Grand") < mix("Player's Seat"));
+        assert!(mix("Tuned Dead") < mix("Close Mics"));
     }
 
     /// A session written before `mechanics` and `release_noise` existed must

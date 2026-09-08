@@ -20,6 +20,7 @@ pub mod app;
 pub mod colors;
 pub mod preset_io;
 pub mod preset_picker;
+pub mod fx_page;
 pub mod header;
 pub mod keyboard;
 pub mod piano_geom;

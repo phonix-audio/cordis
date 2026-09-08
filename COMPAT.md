@@ -45,16 +45,17 @@ the editor. They are frozen as they are.
 These strings are JSON keys inside every saved project's plugin state and inside
 every generated `.vstpreset`.
 
-`hybrid` and `maxhold` are appended, and appending is safe: a project with no key
-for them simply has none, and nice-plug's restore only visits the keys it finds.
-Adding is always allowed; renaming and reordering are not.
+`hybrid` and `maxhold` are appended, and appending is safe: a project with no
+key for them simply has none, and nice-plug's restore only visits the keys it
+finds. Adding is always allowed; renaming and reordering are not.
 
 ## The patch's serde shape
 
     name voicing unison_detune width damper mechanics release_noise tune gain
+    fx
 
 In that order, and with the `#[serde(default)]` fallbacks intact: `mechanics`
-defaults to 0.35 and `release_noise` to 0.5. A session written before those two
+defaults to 0.35, `release_noise` to 0.5, and `fx` to an empty chain. A session written before those two
 fields existed relies on them, so removing a default is a silent data change
 rather than a compile error.
 
@@ -76,6 +77,29 @@ silently repoints saved projects at a different piano.
 Append only.
 
 Test: `cordis`, `the_factory_bank_is_a_wire_format`.
+
+## The master chain a patch carries
+
+    slots   parametric eq, glue compression, room, safety ceiling
+
+Every factory preset carries its own settings for those four, inside its patch:
+the rooms differ, and so do the shelf and the glue where the microphones move.
+What no preset and no user can change is WHICH effects run and in what order.
+That is what curated means here, and it is why the order is listed above.
+
+`CordisPatch::default()` is the first preset, name and values, and it carries
+that preset's chain: a fresh instance plays what its window says. The field's
+serde default is a different thing, and the difference is the whole
+compatibility story: a patch written before `fx` existed deserialises to an
+EMPTY chain, and an empty chain is a real no-op -- `EffectsChain` with zero
+slots returns its input untouched. A project saved before this existed keeps
+sounding as it did.
+
+Tests: `cordis`, `every_factory_preset_carries_its_own_chain`,
+`the_default_patch_is_the_first_preset_chain_included` and
+`a_patch_written_before_fx_existed_has_no_chain`; `cordis-plugin`,
+`an_empty_chain_is_bit_identical` and `a_fresh_instance_carries_the_first_preset_chain`;
+`cordis-ui`, `the_engine_mirror_does_not_erase_an_fx_edit`.
 
 ## The `.vstpreset` byte layout
 

@@ -19,6 +19,9 @@ pub struct HeaderResult {
     pub load_clicked: bool,
     /// The preview lamp was clicked; the caller flips the engine's hybrid mode.
     pub preview_toggled: bool,
+    /// A page was picked in the fascia switch: 0 the instrument, 1 the
+    /// effects.
+    pub tab_selected: Option<u8>,
 }
 
 /// Draw the strip. `preset_name` is shown on the plate, `preset_names` fills
@@ -31,6 +34,7 @@ pub fn draw(
     voices: u8,
     preview_on: bool,
     bank_fill: (u16, u16),
+    tab: u8,
 ) -> HeaderResult {
     let mut out = HeaderResult::default();
     let mid = rect.center().y;
@@ -125,6 +129,29 @@ pub fn draw(
             *flag = true;
         }
         x += 54.0;
+    }
+
+    // ── Page switch ──────────────────────────────────────────────────
+    // The composition is a drawing at a fixed size with no room left in
+    // either column, so the effects live on their own page rather than in a
+    // cluster. Same answer the sibling instruments reached.
+    for (i, label) in ["MACHINE", "FX"].iter().enumerate() {
+        let w = if i == 0 { 62.0 } else { 34.0 };
+        let r = Rect::from_min_size(Pos2::new(x + 16.0, mid - 9.0), Vec2::new(w, 18.0));
+        let resp = ui.interact(r, ui.id().with(label), Sense::click());
+        let on = tab == i as u8;
+        let col = if on || resp.hovered() { GOLD_BRIGHT } else { GOLD.gamma_multiply(0.7) };
+        if on {
+            ui.painter().rect_filled(r, 2.0, col.gamma_multiply(0.20));
+        }
+        ui.painter()
+            .rect_stroke(r, 2.0, Stroke::new(1.0, col.gamma_multiply(0.6)), egui::StrokeKind::Inside);
+        ui.painter()
+            .text(r.center(), Align2::CENTER_CENTER, *label, FontId::proportional(9.0), col);
+        if resp.clicked() {
+            out.tab_selected = Some(i as u8);
+        }
+        x += w + 8.0;
     }
 
     // ── Right tail: voices, then the preview lamp ────────────────────
@@ -228,7 +255,7 @@ mod tests {
                     .frame(egui::Frame::NONE)
                     .show(ctx, |ui| {
                         let r = ui.max_rect();
-                        draw(ui, r, &names[0], &names, 0, false, (0, 0));
+                        draw(ui, r, &names[0], &names, 0, false, (0, 0), 0);
                     });
             })
     }

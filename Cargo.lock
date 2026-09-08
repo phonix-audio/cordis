@@ -656,6 +656,7 @@ version = "0.1.0"
 dependencies = [
  "hound",
  "libc",
+ "phonix-fx",
  "rustfft",
  "serde",
  "serde_json",
@@ -670,6 +671,7 @@ dependencies = [
  "egui",
  "nice-plug",
  "nice-plug-egui",
+ "phonix-fx",
  "serde_json",
 ]
 
@@ -692,6 +694,7 @@ dependencies = [
  "egui",
  "egui_extras",
  "egui_kittest",
+ "phonix-fx",
  "rfd",
  "serde",
  "serde_json",
@@ -1534,7 +1537,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 2.0.20",
- "windows 0.61.3",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -2805,6 +2808,32 @@ checksum = "67eabc2ef2a60eb7faa00097bd1ffdb5bd28e62bf39990626a582201b7a754e5"
 dependencies = [
  "siphasher",
  "unicase",
+]
+
+[[package]]
+name = "phonix-data"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "phonix-dsp"
+version = "0.1.0"
+dependencies = [
+ "rustfft",
+ "serde",
+]
+
+[[package]]
+name = "phonix-fx"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "phonix-data",
+ "phonix-dsp",
+ "rustfft",
+ "serde",
 ]
 
 [[package]]

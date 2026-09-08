@@ -12,6 +12,7 @@
 //! measured stringing of a Steinway D; Ege (2009, 2013) for the soundboard's
 //! measured modes and damping.
 
+pub mod fx;
 pub mod patch;
 pub mod modal_bank;
 pub mod scale;

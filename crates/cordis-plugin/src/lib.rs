@@ -12,7 +12,11 @@ use cordis_ui::CordisApp;
 use cordis::patch::factory_presets_tagged;
 use cordis::{CordisCommand, CordisEngine, CordisMeterState, CordisPatch};
 use cordis::state_buffer::{meter_channel, SharedReader, Writer};
+mod fx;
 mod vstpreset;
+use phonix_fx::effects::EffectsChain;
+use phonix_fx::fx_chain::FxChainSpec;
+use std::sync::atomic::{AtomicU64, Ordering};
 use vstpreset::ParamValue;
 
 const KNOBS: usize = 8;
@@ -28,6 +32,21 @@ pub struct CordisPlugin {
     last_preset: i32,
     last_knobs: Option<[f32; KNOBS]>,
     last_hybrid: Option<(bool, f32)>,
+    /// The curated master chain. `None` until `initialize` knows the sample
+    /// rate, and EMPTY until a factory preset is explicitly loaded: a project
+    /// saved before this existed drives it through no code path that fills it,
+    /// so it stays a documented no-op and the audio is unchanged.
+    fx_chain: Option<EffectsChain>,
+    /// The chain the host side is running, and a counter bumped by whichever
+    /// side last wrote it. NOT persisted: the patch carries the chain across a
+    /// save. This is the channel between the audio thread and the editor, and
+    /// it exists because neither can see the other's copy.
+    ///
+    /// Always written BEFORE the counter is raised, so a reader that sees a
+    /// new number is guaranteed to read the value that goes with it.
+    fx_live: Arc<RwLock<FxChainSpec>>,
+    fx_rev: Arc<AtomicU64>,
+    fx_seen: u64,
 }
 
 impl Default for CordisPlugin {
@@ -42,6 +61,9 @@ impl Default for CordisPlugin {
             params: Arc::new(CordisParams::new(presets.len(), Arc::new(names))),
             engine: None, tx, meter: Some(mr), pending: Some((rx, mw)),
             buf: Vec::new(), presets, last_preset: 0, last_knobs: None, last_hybrid: None,
+            fx_chain: None,
+            fx_live: Arc::new(RwLock::new(FxChainSpec::default())),
+            fx_rev: Arc::new(AtomicU64::new(0)), fx_seen: 0,
         }
     }
 }
@@ -164,20 +186,51 @@ impl Plugin for CordisPlugin {
         // Seed the editor from the restored state before its first frame, or the
         // closure below publishes the default patch over it.
         if let Ok(p) = patch_state.read() { app.set_patch(p.clone()); }
-        let hybrid_param = self.params.clone();
+        let host_params = self.params.clone();
+        let fx_rev = self.fx_rev.clone();
+        let fx_live = self.fx_live.clone();
+        // The closure must be Sync, so the counter it remembers is an atomic.
+        let seen = AtomicU64::new(fx_rev.load(Ordering::Relaxed));
+        // Seed the page from the restored patch, as the patch itself is above.
+        if let Ok(p) = self.params.patch_state.read() {
+            if let Ok(mut w) = self.fx_live.write() { *w = p.fx.clone(); }
+        }
         create_egui_editor(self.params.editor_state.clone(), app, Default::default(),
             |_c, _q, _a| {},
             move |ui, setter, _q, app| {
                 let ctx = ui.ctx().clone();
+                // A preset change replaced the chain: adopt it before
+                // drawing, or the page shows the previous preset's effects.
+                let rev = fx_rev.load(Ordering::Relaxed);
+                if rev != seen.load(Ordering::Relaxed) {
+                    if let Ok(spec) = fx_live.read() {
+                        app.set_fx(spec.clone());
+                        seen.store(rev, Ordering::Relaxed);
+                    }
+                }
                 app.draw_ui(&ctx);
                 // The lamp's request goes through the HOST PARAMETER, so the
                 // parameter, the engine and the lamp can never disagree (the
                 // lamp used to command the engine directly and leave the
                 // parameter behind).
                 if let Some(on) = app.take_wants_hybrid() {
-                    setter.begin_set_parameter(&hybrid_param.hybrid);
-                    setter.set_parameter(&hybrid_param.hybrid, on);
-                    setter.end_set_parameter(&hybrid_param.hybrid);
+                    setter.begin_set_parameter(&host_params.hybrid);
+                    setter.set_parameter(&host_params.hybrid, on);
+                    setter.end_set_parameter(&host_params.hybrid);
+                }
+                // The page moved something. Publish it, THEN raise the
+                // counter: the audio thread reads the value only because the
+                // number changed, so the number must be the last thing to.
+                if app.take_fx_changed() {
+                    if let Ok(mut w) = fx_live.write() {
+                        *w = app.fx().clone();
+                    }
+                    seen.store(fx_rev.fetch_add(1, Ordering::Relaxed) + 1, Ordering::Relaxed);
+                }
+                if let Some(i) = app.take_wants_preset() {
+                    setter.begin_set_parameter(&host_params.preset);
+                    setter.set_parameter(&host_params.preset, i);
+                    setter.end_set_parameter(&host_params.preset);
                 }
                 if let Ok(mut p) = patch_state.write() { *p = app.current_patch(); }
             })
@@ -190,7 +243,7 @@ impl Plugin for CordisPlugin {
     /// `setState` reported `kResultFalse` and the restored patch never reached
     /// the engine. The channel ends only exist once, so build the engine on the
     /// first call and re-rate it in place afterwards.
-    fn initialize(&mut self, _l: &AudioIOLayout, cfg: &BufferConfig, _c: &mut impl InitContext<Self>) -> bool {
+    fn initialize(&mut self, _l: &AudioIOLayout, cfg: &BufferConfig, ctx: &mut impl InitContext<Self>) -> bool {
         match self.pending.take() {
             Some((rx, mw)) => {
                 let mut eng = CordisEngine::new(cfg.sample_rate, rx, mw);
@@ -226,8 +279,28 @@ impl Plugin for CordisPlugin {
                 None => return false,
             },
         }
+        // Built here rather than in `Default` so it never carries a placeholder
+        // rate, and re-rated in place on the second call for the same reason
+        // the engine is.
+        match self.fx_chain.as_mut() {
+            Some(c) => c.set_sample_rate(cfg.sample_rate),
+            None => self.fx_chain = Some(EffectsChain::new(cfg.sample_rate)),
+        }
+        // Zero while the chain is empty, and again after a rate change until a
+        // preset fills it. The limiter's lookahead is the only slot that ever
+        // makes it non-zero.
+        let lat = self.fx_chain.as_ref().map_or(0, |c| c.latency_samples());
+        ctx.set_latency_samples(lat as u32);
+
         self.buf = vec![0.0; cfg.max_buffer_size as usize * 2];
         let patch = self.params.patch_state.read().map(|p| p.clone()).unwrap_or_default();
+        // A restored project brings its chain with it, inside the patch; one
+        // saved before the field existed brings an empty spec, and an empty
+        // spec leaves an empty chain.
+        if let Some(c) = self.fx_chain.as_mut() {
+            fx::apply(c, &patch.fx);
+        }
+        self.fx_seen = self.fx_rev.load(Ordering::Relaxed);
         let _ = self.tx.send(CordisCommand::LoadPatch(Box::new(patch)));
         self.last_preset = self.params.preset.value();
         // Force the knob diff in `process` to resend all eight Set commands, so
@@ -247,7 +320,47 @@ impl Plugin for CordisPlugin {
         let cp = self.params.preset.value();
         if cp != self.last_preset {
             self.last_preset = cp;
-            if cp > 0 { if let Some(p) = self.presets.get((cp - 1) as usize) { let _ = tx.send(CordisCommand::LoadPatch(Box::new(p.clone()))); } }
+            if cp > 0 {
+                if let Some(p) = self.presets.get((cp - 1) as usize) {
+                    let _ = tx.send(CordisCommand::LoadPatch(Box::new(p.clone())));
+                    // The one event that fills the chain. `initialize` syncs
+                    // `last_preset` to the restored value before the first
+                    // block, so reopening a project never reaches this.
+                    // The preset's own chain, taken from the bank rather
+                    // than from the editor: this branch also fires on host
+                    // automation, where no click happened in the window.
+                    if let Some(c) = self.fx_chain.as_mut() {
+                        fx::apply(c, &p.fx);
+                        ctx.set_latency_samples(c.latency_samples() as u32);
+                    }
+                    if let Ok(mut w) = self.fx_live.write() {
+                        *w = p.fx.clone();
+                    }
+                    self.fx_seen = self.fx_rev.fetch_add(1, Ordering::Relaxed) + 1;
+                }
+            } else {
+                // Back to Init: the curated chain goes with the preset it came
+                // with.
+                if let Some(c) = self.fx_chain.as_mut() {
+                    fx::disengage(c);
+                    ctx.set_latency_samples(c.latency_samples() as u32);
+                }
+                if let Ok(mut w) = self.fx_live.write() {
+                    *w = FxChainSpec::default();
+                }
+                self.fx_seen = self.fx_rev.fetch_add(1, Ordering::Relaxed) + 1;
+            }
+        }
+        // An edit made on the FX page. The lock is only taken when the counter
+        // moved, and `try_read` rather than `read` because this is the audio
+        // thread: a frame missed here is picked up on the next block.
+        let rev = self.fx_rev.load(Ordering::Relaxed);
+        if rev != self.fx_seen {
+            if let (Some(c), Ok(spec)) = (self.fx_chain.as_mut(), self.fx_live.try_read()) {
+                fx::apply(c, &spec);
+                ctx.set_latency_samples(c.latency_samples() as u32);
+                self.fx_seen = rev;
+            }
         }
         // The cache is a PREVIEW: each note is rendered once and replayed, which
         // is far cheaper but cannot reproduce a hammer meeting a string that is
@@ -292,12 +405,22 @@ impl Plugin for CordisPlugin {
         if self.buf.len() < il { self.buf.resize(il, 0.0); }
         for s in &mut self.buf[..il] { *s = 0.0; }
         engine.process_audio(&mut self.buf[..il], 2);
+        // The chain runs in stereo in both branches, before any summing: the
+        // room's width and the compressor's stereo linkage need both channels.
+        let chain = self.fx_chain.as_mut();
         let ch = buffer.as_slice();
         if ch.len() >= 2 {
             let (l, r) = ch.split_at_mut(1);
             for i in 0..n { l[0][i] = self.buf[i * 2]; r[0][i] = self.buf[i * 2 + 1]; }
+            if let Some(c) = chain { c.process_block_stereo(&mut l[0][..n], &mut r[0][..n]); }
         } else if !ch.is_empty() {
-            for i in 0..n { ch[0][i] = (self.buf[i * 2] + self.buf[i * 2 + 1]) * 0.5; }
+            match chain {
+                Some(c) => for i in 0..n {
+                    let (fl, fr) = c.process(self.buf[i * 2], self.buf[i * 2 + 1]);
+                    ch[0][i] = (fl + fr) * 0.5;
+                },
+                None => for i in 0..n { ch[0][i] = (self.buf[i * 2] + self.buf[i * 2 + 1]) * 0.5; },
+            }
         }
         ProcessStatus::Normal
     }
@@ -367,5 +490,32 @@ mod frozen_identifiers {
         );
         assert_eq!(<CordisPlugin as Plugin>::NAME, "Cordis");
         assert_eq!(<CordisPlugin as Plugin>::VENDOR, "Phonix Audio");
+    }
+}
+
+// ── The curated chain's compatibility surface ─────────────────────
+#[cfg(test)]
+mod fx_chain_compat {
+    use super::*;
+
+    /// A plugin that has not been initialised, and a project that never loads
+    /// a factory preset, both hold no chain at all. `fx::tests` proves the
+    /// other half: that an empty chain returns its input untouched.
+    #[test]
+    fn a_fresh_plugin_carries_no_chain() {
+        let p = CordisPlugin::default();
+        assert!(p.fx_chain.is_none());
+    }
+
+    /// A fresh instance shows the first preset's name, so its state must
+    /// carry that preset's chain: what the window says and what plays are
+    /// the same thing. A project saved before the field existed is the other
+    /// case, and `cordis` pins it: that one restores to an empty chain.
+    #[test]
+    fn a_fresh_instance_carries_the_first_preset_chain() {
+        let p = CordisParams::default();
+        let held = p.patch_state.read().unwrap().fx.clone();
+        assert_eq!(held, cordis::patch::factory_presets()[0].fx);
+        assert_eq!(held.slots.len(), cordis::fx::FX_SLOTS);
     }
 }

@@ -9,6 +9,10 @@ license.workspace = true
 crate-type = ["rlib"]
 
 [dependencies]
+# The chain's description, to draw its settings. NOT `phonix-fx-ui`: the
+# page is drawn with Cordis's own widgets so it is one instrument, not an
+# instrument with the sequencer's rack bolted on.
+phonix-fx      = { workspace = true }
 cordis      = { workspace = true }
 egui        = { workspace = true }
 egui_extras = { workspace = true }

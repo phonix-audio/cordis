@@ -16,3 +16,7 @@ cordis         = { workspace = true }
 cordis-ui      = { workspace = true }
 egui           = { workspace = true }
 serde_json     = { workspace = true }
+# The curated master chain. `phonix-fx` is pure DSP: no egui, no
+# sequencer, no plugin framework. The engine crate does not see it —
+# effects belong to the host, and out here the plugin is the host.
+phonix-fx      = { workspace = true }
