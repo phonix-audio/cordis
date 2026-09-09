@@ -21,3 +21,6 @@ serde_json     = { workspace = true }
 # effects belong to the host, and out here the plugin is the host.
 phonix-fx      = { workspace = true }
 phonix-plugin  = { workspace = true }
+
+[dev-dependencies]
+egui_kittest   = { workspace = true }

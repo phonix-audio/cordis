@@ -671,6 +671,7 @@ dependencies = [
  "cordis",
  "cordis-ui",
  "egui",
+ "egui_kittest",
  "nice-plug",
  "nice-plug-egui",
  "phonix-fx",

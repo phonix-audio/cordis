@@ -257,3 +257,121 @@ mod tests {
         assert!(peak <= ceiling, "peak {peak} above the ceiling {ceiling}");
     }
 }
+
+/// The editor and the audio thread, driven in the plugin's own order through
+/// the real page, the link and a real chain.
+#[cfg(test)]
+mod through_the_page {
+    use super::*;
+    use cordis::patch::factory_presets_tagged;
+    use cordis::state_buffer::meter_channel;
+    use cordis::{CordisMeterState, CordisPatch};
+    use cordis_ui::CordisApp;
+    use egui_kittest::Harness;
+    use phonix_fx::Value;
+
+    const SR: f32 = 48_000.0;
+
+    struct Audio {
+        chain: Chain,
+        seen: u64,
+        last_preset: i32,
+        preset: i32,
+    }
+
+    /// One editor frame, as `create_editor`'s closure runs it.
+    fn frame(h: &mut Harness<'_, CordisApp>, link: &FxLink, seen: &mut u64, bank: &[CordisPatch], param: &mut i32) {
+        if let Some(spec) = link.adopt(seen) {
+            h.state_mut().set_fx(spec);
+        }
+        h.run_steps(1);
+        let app = h.state_mut();
+        if app.take_fx_changed() {
+            *seen = link.publish(app.fx().clone());
+        }
+        if let Some(i) = app.take_wants_preset() {
+            let chain = bank.get((i - 1).max(0) as usize).filter(|_| i > 0).map(|p| p.fx.clone()).unwrap_or_default();
+            *seen = link.publish(chain);
+            *param = i;
+        }
+    }
+
+    /// One audio block, as `process` runs it.
+    fn block(a: &mut Audio, link: &FxLink, bank: &[CordisPatch]) {
+        if a.preset != a.last_preset {
+            a.last_preset = a.preset;
+            match bank.get((a.preset - 1).max(0) as usize).filter(|_| a.preset > 0) {
+                Some(p) => {
+                    apply(&mut a.chain, &p.fx);
+                    a.seen = link.publish(p.fx.clone());
+                }
+                None => {
+                    disengage(&mut a.chain);
+                    a.seen = link.publish(ChainSpec::default());
+                }
+            }
+        }
+        let chain = &mut a.chain;
+        link.apply_if_new(&mut a.seen, |spec| { apply(chain, spec); });
+    }
+
+    fn makeup(chain: &Chain) -> Value {
+        chain.param(chain.param_ref(1, "makeup").unwrap()).unwrap()
+    }
+
+    #[test]
+    fn a_pushed_compressor_is_put_back_by_a_preset_picked_on_the_page() {
+        let bank = factory_presets_tagged();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let (_writer, reader) = meter_channel::<CordisMeterState>();
+        let mut app = CordisApp::new(tx, reader);
+        app.set_patch(bank[0].clone());
+        app.set_tab(1);
+        let link = FxLink::new(bank[0].fx.clone());
+        let mut audio = Audio { chain: Chain::new(SR, 512), seen: link.rev(), last_preset: 1, preset: 1 };
+        apply(&mut audio.chain, &bank[0].fx);
+        let mut seen = link.rev();
+        let mut param = 1;
+        let mut h = Harness::builder().with_size(egui::vec2(1280.0, 800.0)).build_ui_state(|ui, app: &mut CordisApp| app.draw_ui(ui), app);
+
+        // Settle, then push the compressor on the page.
+        for _ in 0..3 { frame(&mut h, &link, &mut seen, &bank, &mut param); block(&mut audio, &link, &bank); }
+        h.state_mut().edit_fx(|fx| { fx.slots[1].set("threshold", -60.0_f32); fx.slots[1].set("makeup", 24.0_f32); });
+        frame(&mut h, &link, &mut seen, &bank, &mut param);
+        block(&mut audio, &link, &bank);
+        assert_eq!(makeup(&audio.chain), Value::F(24.0), "the edit did not reach the audio thread");
+
+        // Another preset, picked on the page.
+        h.state_mut().pick_preset(1);
+        for _ in 0..3 {
+            frame(&mut h, &link, &mut seen, &bank, &mut param);
+            audio.preset = param;
+            block(&mut audio, &link, &bank);
+        }
+        assert_eq!(makeup(&audio.chain), Value::F(0.0), "the audio thread kept the edit");
+        assert_eq!(audio.chain.spec(), Chain::new(SR, 512).tap(|c| { apply(c, &bank[1].fx); }).spec());
+        assert_eq!(h.state_mut().fx(), &bank[1].fx, "the page does not show the preset");
+
+        // The same preset, picked again after another edit.
+        h.state_mut().edit_fx(|fx| { fx.slots[1].set("makeup", 24.0_f32); });
+        frame(&mut h, &link, &mut seen, &bank, &mut param);
+        block(&mut audio, &link, &bank);
+        assert_eq!(makeup(&audio.chain), Value::F(24.0));
+        h.state_mut().pick_preset(1);
+        for _ in 0..3 {
+            frame(&mut h, &link, &mut seen, &bank, &mut param);
+            audio.preset = param;
+            block(&mut audio, &link, &bank);
+        }
+        assert_eq!(makeup(&audio.chain), Value::F(0.0), "a preset picked again left the edit in place");
+        assert_eq!(h.state_mut().fx(), &bank[1].fx);
+    }
+
+    trait Tap: Sized {
+        fn tap(mut self, f: impl FnOnce(&mut Self)) -> Self {
+            f(&mut self);
+            self
+        }
+    }
+    impl Tap for Chain {}
+}

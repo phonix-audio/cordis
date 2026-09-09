@@ -276,6 +276,29 @@ impl CordisApp {
         }
     }
 
+    /// The bank's `i`th preset, as the header picks it: shown here, but NOT
+    /// sent from here. The plugin moves the `preset` parameter, which loads
+    /// the patch and fills the curated chain in one place; sending LoadPatch
+    /// directly would engage the patch and leave the chain behind.
+    pub fn pick_preset(&mut self, i: usize) {
+        if let Some(p) = self.presets.get(i).cloned() {
+            self.patch = p;
+            self.wants_preset = Some(i as i32 + 1);
+        }
+    }
+
+    /// An edit of the chain, as the FX page makes one: the chain moves and
+    /// the plugin is told on the next frame.
+    pub fn edit_fx(&mut self, f: impl FnOnce(&mut phonix_fx::ChainSpec)) {
+        f(&mut self.patch.fx);
+        self.fx_dirty = true;
+    }
+
+    /// Which page is shown: 0 the instrument, 1 the effects.
+    pub fn set_tab(&mut self, tab: u8) {
+        self.tab = tab;
+    }
+
     pub fn take_wants_preset(&mut self) -> Option<i32> {
         self.wants_preset.take()
     }
@@ -310,15 +333,7 @@ impl CordisApp {
             self.tab,
         );
         if let Some(i) = res.preset_selected {
-            if let Some(p) = self.presets.get(i).cloned() {
-                // Shown here, but NOT sent from here. The plugin moves the
-                // `preset` parameter, which loads the patch and fills the
-                // curated chain in one place; sending LoadPatch directly would
-                // engage the patch and leave the chain behind, exactly the
-                // desynchronisation the lamp used to have.
-                self.patch = p;
-                self.wants_preset = Some(i as i32 + 1);
-            }
+            self.pick_preset(i);
         }
         if let Some(t) = res.tab_selected {
             self.tab = t;
