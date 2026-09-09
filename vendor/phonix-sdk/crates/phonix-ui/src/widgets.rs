@@ -203,7 +203,7 @@ impl<'a> Panel<'a> {
             .fill(pal.bg_panel)
             .corner_radius(4.0)
             .inner_margin(12i8)
-            .stroke(Stroke::new(1.0, pal.border))
+            .stroke(Stroke::new(1.0_f32, pal.border))
             .show(ui, |ui| {
                 ui.set_min_width(ui.available_width());
                 Self::show_content(ui, header, enabled, min_col_width, content, depth);
@@ -326,7 +326,7 @@ pub fn adsr_display(
 
     let pal = Palette::of(ui.ctx());
     painter.rect_filled(rect, 4u8, pal.bg_dark);
-    painter.rect_stroke(rect, 4.0, Stroke::new(1.0, pal.border), egui::StrokeKind::Outside);
+    painter.rect_stroke(rect, 4.0, Stroke::new(1.0_f32, pal.border), egui::StrokeKind::Outside);
 
     let pad = 6.0;
     let inner_w = rect.width() - pad * 2.0;
@@ -376,7 +376,7 @@ pub fn adsr_display(
     // Stroke: draw the envelope line
     painter.add(Shape::line(
         points,
-        Stroke::new(2.0, ACCENT_ENV),
+        Stroke::new(2.0_f32, ACCENT_ENV),
     ));
 
     // Phase markers (subtle vertical lines)
@@ -384,7 +384,7 @@ pub fn adsr_display(
     for &x in &[x_d, x_s, x_r] {
         painter.line_segment(
             [Pos2::new(x, top), Pos2::new(x, bottom)],
-            Stroke::new(1.0, marker_color),
+            Stroke::new(1.0_f32, marker_color),
         );
     }
 
@@ -450,7 +450,7 @@ fn draw_knob_body(
     // ERGO: 3-state knob — idle (subtle), hover (glow ring + value), active/drag (bright glow + value)
     if hovered {
         let glow_alpha = if dragging { 140u8 } else { 80 };
-        let glow_width = if dragging { 2.5 } else { 1.5 };
+        let glow_width = if dragging { 2.5_f32 } else { 1.5_f32 };
         painter.circle_stroke(
             center,
             radius + 5.0,
@@ -461,12 +461,12 @@ fn draw_knob_body(
     }
 
     // Outer ring delimiter
-    painter.circle_stroke(center, radius + 3.0, Stroke::new(1.0, pal.border));
+    painter.circle_stroke(center, radius + 3.0, Stroke::new(1.0_f32, pal.border));
     painter.circle_filled(center, radius + 2.0, pal.bg_dark);
 
     // Background circle
     painter.circle_filled(center, radius, pal.bg_raised);
-    painter.circle_stroke(center, radius, Stroke::new(1.0, pal.border));
+    painter.circle_stroke(center, radius, Stroke::new(1.0_f32, pal.border));
 
     // Inner circle (recessed look — darker center)
     painter.circle_filled(center, radius - 3.0, pal.bg_dark);
@@ -486,7 +486,7 @@ fn draw_knob_body(
         let r = radius + 1.0;
         let p0 = center + Vec2::new(a0.cos(), a0.sin()) * r;
         let p1 = center + Vec2::new(a1.cos(), a1.sin()) * r;
-        painter.line_segment([p0, p1], Stroke::new(3.0, pal.pointer_shadow));
+        painter.line_segment([p0, p1], Stroke::new(3.0_f32, pal.pointer_shadow));
     }
 
     // Active arc — accent color with glow on hover
@@ -500,14 +500,14 @@ fn draw_knob_body(
             let p0 = center + Vec2::new(a0.cos(), a0.sin()) * r;
             let p1 = center + Vec2::new(a1.cos(), a1.sin()) * r;
             // Thicker active arc + glow when hovered
-            let arc_width = if hovered { 3.5 } else { 3.0 };
+            let arc_width = if hovered { 3.5_f32 } else { 3.0_f32 };
             painter.line_segment([p0, p1], Stroke::new(arc_width, accent));
             // Soft glow behind active arc on hover
             if hovered {
                 let glow_r = radius + 1.0;
                 let gp0 = center + Vec2::new(a0.cos(), a0.sin()) * glow_r;
                 let gp1 = center + Vec2::new(a1.cos(), a1.sin()) * glow_r;
-                painter.line_segment([gp0, gp1], Stroke::new(6.0, Color32::from_rgba_unmultiplied(
+                painter.line_segment([gp0, gp1], Stroke::new(6.0_f32, Color32::from_rgba_unmultiplied(
                     accent.r(), accent.g(), accent.b(), 30,
                 )));
             }
@@ -535,7 +535,7 @@ fn draw_knob_body(
             let p1 = center + Vec2::new((from + (to - from) * t1).cos(),
                                         (from + (to - from) * t1).sin()) * mod_r;
             let col = Color32::from_rgba_unmultiplied(255, 255, 255, 200);
-            painter.line_segment([p0, p1], Stroke::new(2.0, col));
+            painter.line_segment([p0, p1], Stroke::new(2.0_f32, col));
         }
         // Small filled dot at the live-value tip for extra readability.
         let tip = center + Vec2::new(a1.cos(), a1.sin()) * mod_r;
@@ -561,7 +561,7 @@ fn draw_knob_body(
     let pointer_start = center + Vec2::new(pointer_angle.cos(), pointer_angle.sin()) * (radius * 0.3);
     let pointer_end = center + Vec2::new(pointer_angle.cos(), pointer_angle.sin()) * (radius - 5.0);
     let pointer_color = if hovered { Color32::WHITE } else { pal.pointer };
-    painter.line_segment([pointer_start, pointer_end], Stroke::new(2.0, pointer_color));
+    painter.line_segment([pointer_start, pointer_end], Stroke::new(2.0_f32, pointer_color));
 
     // Pointer dot at tip
     let dot_pos = center + Vec2::new(pointer_angle.cos(), pointer_angle.sin()) * (radius - 5.0);
@@ -817,8 +817,8 @@ pub fn close_button(ui: &mut Ui, size: f32) -> egui::Response {
     let p2 = egui::pos2(rect.max.x - pad, rect.max.y - pad);
     let p3 = egui::pos2(rect.max.x - pad, rect.min.y + pad);
     let p4 = egui::pos2(rect.min.x + pad, rect.max.y - pad);
-    painter.line_segment([p1, p2], Stroke::new(1.5, stroke_col));
-    painter.line_segment([p3, p4], Stroke::new(1.5, stroke_col));
+    painter.line_segment([p1, p2], Stroke::new(1.5_f32, stroke_col));
+    painter.line_segment([p3, p4], Stroke::new(1.5_f32, stroke_col));
     response
 }
 
@@ -925,7 +925,7 @@ pub fn panel_frame<R>(
         .fill(pal.bg_panel)
         .corner_radius(4.0)
         .inner_margin(10i8)
-        .stroke(Stroke::new(1.0, pal.border))
+        .stroke(Stroke::new(1.0_f32, pal.border))
         .show(ui, |ui| {
             ui.set_min_width(ui.available_width());
             add(ui)
@@ -958,7 +958,7 @@ pub fn tab_bar(ui: &mut Ui, selected: usize, labels: &[&str], accent: Color32) -
                 ui.painter().hline(
                     r.left()..=r.right(),
                     r.bottom() + 1.0,
-                    Stroke::new(2.0, accent),
+                    Stroke::new(2.0_f32, accent),
                 );
             }
             ui.add_space(4.0);
@@ -975,7 +975,7 @@ pub fn vu_meter(ui: &mut Ui, level: f32, width: f32, height: f32, _stereo: bool)
 
     let pal = Palette::of(ui.ctx());
     painter.rect_filled(rect, 2u8, pal.bg_dark);
-    painter.rect_stroke(rect, 2.0, Stroke::new(0.5, pal.border), egui::StrokeKind::Outside);
+    painter.rect_stroke(rect, 2.0, Stroke::new(0.5_f32, pal.border), egui::StrokeKind::Outside);
 
     let segments = 12;
     let segment_height = (rect.height() - 4.0) / segments as f32;
@@ -1061,7 +1061,7 @@ pub fn vintage_slider(
         let track_h = if hovered { 5.0 } else { 4.0 };
         let track_rect = Rect::from_center_size(rect.center(), Vec2::new(rect.width(), track_h));
         painter.rect_filled(track_rect, 2u8, pal.bg_dark);
-        painter.rect_stroke(track_rect, 2u8, Stroke::new(0.5, Color32::from_rgb(20, 20, 22)), egui::StrokeKind::Outside);
+        painter.rect_stroke(track_rect, 2u8, Stroke::new(0.5_f32, Color32::from_rgb(20, 20, 22)), egui::StrokeKind::Outside);
 
         // Filled portion
         let normalized = (*value - min) / (max - min);
@@ -1087,7 +1087,7 @@ pub fn vintage_slider(
         let thumb_r = if dragging { 7.5 } else if hovered { 7.0 } else { 6.0 };
         painter.circle_filled(thumb_center, thumb_r, if hovered { Color32::WHITE } else { pal.bg_raised });
         painter.circle_stroke(thumb_center, thumb_r, Stroke::new(
-            if hovered { 1.5 } else { 1.0 },
+            if hovered { 1.5_f32 } else { 1.0_f32 },
             accent,
         ));
 
@@ -1160,7 +1160,7 @@ pub fn peak_meter_vertical(ui: &mut Ui, peak: f32, size: Vec2, accent: Color32) 
     let tick_y = rect.max.y - size.y * 0.79;
     p.line_segment(
         [Pos2::new(rect.min.x, tick_y), Pos2::new(rect.max.x, tick_y)],
-        Stroke::new(0.6, Color32::from_rgba_unmultiplied(255, 255, 255, 60)),
+        Stroke::new(0.6_f32, Color32::from_rgba_unmultiplied(255, 255, 255, 60)),
     );
 }
 
@@ -1192,7 +1192,7 @@ pub fn panel_header_toggle(ui: &mut Ui, icon: &'static [u8], uri: &'static str,
         let img = egui::Image::from_bytes(uri, icon)
             .fit_to_exact_size(egui::Vec2::splat(12.0))
             .tint(tint);
-        if ui.add(egui::ImageButton::new(img).frame(false)).clicked() { toggled = true; }
+        if ui.add(egui::Button::image(img).frame(false)).clicked() { toggled = true; }
         if ui.add(egui::Label::new(RichText::new(title).color(tint).size(11.0).strong())
             .sense(egui::Sense::click())).clicked() { toggled = true; }
     });
@@ -1259,7 +1259,7 @@ pub fn empty_session_cta(ui: &mut Ui, view_name: &str, add_menu: impl FnOnce(&mu
 /// for slow round-trips (preset loads) and compose with this gate.
 pub fn mirror_adopt_gate(ctx: &egui::Context, hold_frames: &mut u8) -> bool {
     const HOLD: u8 = 20;
-    let interacting = ctx.input(|i| i.pointer.any_down()) || ctx.wants_keyboard_input();
+    let interacting = ctx.input(|i| i.pointer.any_down()) || ctx.egui_wants_keyboard_input();
     if interacting {
         *hold_frames = HOLD;
         return false;
@@ -1365,7 +1365,7 @@ fn sticky_body(
     // over any child popup/area leaves it open (that is the whole point).
     let primary_pressed = ctx.input(|i| i.pointer.button_pressed(PointerButton::Primary));
     let inside = ctx.pointer_interact_pos().is_some_and(|p| area.response.rect.contains(p));
-    let over_area = ctx.is_pointer_over_area();
+    let over_area = ctx.is_pointer_over_egui();
     let clicked_out = primary_pressed && !inside && !over_area;
 
     if !just_opened && (requested_close || esc || clicked_out) {

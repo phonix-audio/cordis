@@ -19,26 +19,42 @@
 //! not exposed as a stable `std::arch` intrinsic; FTZ alone is sufficient here
 //! because the offending values are all *produced* inside our own DSP loops.)
 
+/// The flush-to-zero bit of MXCSR.
+#[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
+const FTZ: u32 = 1 << 15;
+
 /// Enable flush-to-zero on the current thread (x86/x86_64). No-op elsewhere.
 ///
 /// Idempotent and effectively free, so calling it at the top of every audio
-/// callback is fine — the audio thread is created by the host outside our control,
-/// so we cannot rely on a one-time init hook there.
+/// callback is fine: the audio thread is created by the host outside our
+/// control, so there is no one-time init hook there.
 #[inline]
 pub fn enable_flush_to_zero() {
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
     {
-        use std::arch::x86_64::{_MM_SET_FLUSH_ZERO_MODE, _MM_FLUSH_ZERO_ON};
-        // SAFETY: writes only the current thread's MXCSR FTZ bit; SSE2 is
-        // guaranteed on x86_64.
-        unsafe { _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON); }
-    }
-    #[cfg(target_arch = "x86")]
-    {
-        use std::arch::x86::{_MM_SET_FLUSH_ZERO_MODE, _MM_FLUSH_ZERO_ON};
-        // SAFETY: as above; guarded to SSE-capable x86 builds.
-        unsafe { _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON); }
+        let mut csr: u32 = 0;
+        // SAFETY: stmxcsr and ldmxcsr read and write the current thread's
+        // MXCSR only; SSE is guaranteed on x86_64 and on every x86 target this
+        // crate builds for. Only the FTZ bit changes.
+        unsafe {
+            std::arch::asm!("stmxcsr [{0}]", in(reg) &mut csr, options(nostack, preserves_flags));
+            csr |= FTZ;
+            std::arch::asm!("ldmxcsr [{0}]", in(reg) &csr, options(nostack, preserves_flags));
+        }
     }
     // On aarch64 the default FPCR already flushes denormals (FZ) for NEON in most
     // configurations; no portable stable intrinsic to force it, so this is a no-op.
+}
+
+#[cfg(all(test, any(target_arch = "x86_64", target_arch = "x86")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_product_that_would_be_denormal_is_zero_once_enabled() {
+        enable_flush_to_zero();
+        let tiny = std::hint::black_box(1.0e-38_f32);
+        let product = std::hint::black_box(tiny * 0.01);
+        assert_eq!(product, 0.0);
+    }
 }
