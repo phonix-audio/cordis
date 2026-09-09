@@ -656,7 +656,8 @@ version = "0.1.0"
 dependencies = [
  "hound",
  "libc",
- "phonix-fx",
+ "phonix-fx 0.2.0",
+ "phonix-legacy",
  "rustfft",
  "serde",
  "serde_json",
@@ -671,7 +672,8 @@ dependencies = [
  "egui",
  "nice-plug",
  "nice-plug-egui",
- "phonix-fx",
+ "phonix-fx 0.1.0",
+ "phonix-fx 0.2.0",
  "serde_json",
 ]
 
@@ -694,7 +696,7 @@ dependencies = [
  "egui",
  "egui_extras",
  "egui_kittest",
- "phonix-fx",
+ "phonix-fx 0.2.0",
  "rfd",
  "serde",
  "serde_json",
@@ -2827,16 +2829,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "phonix-dsp"
+version = "0.2.0"
+dependencies = [
+ "rustfft",
+ "serde",
+]
+
+[[package]]
 name = "phonix-fx"
 version = "0.1.0"
 dependencies = [
  "hound",
  "log",
  "phonix-data",
- "phonix-dsp",
+ "phonix-dsp 0.1.0",
  "rustfft",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "phonix-fx"
+version = "0.2.0"
+dependencies = [
+ "phonix-dsp 0.2.0",
+ "serde",
+]
+
+[[package]]
+name = "phonix-legacy"
+version = "0.2.0"
+dependencies = [
+ "phonix-fx 0.2.0",
+ "serde",
 ]
 
 [[package]]

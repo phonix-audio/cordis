@@ -9,6 +9,8 @@ members = [
     "crates/phonix-dsp",
     "crates/phonix-data",
 ]
+# The SDK mirror is its own workspace; its crates are reached by path.
+exclude = ["vendor/phonix-sdk"]
 
 [workspace.package]
 version    = "0.1.0"
@@ -21,14 +23,15 @@ repository = "https://github.com/phonix-audio/cordis"
 cordis    = { path = "crates/cordis",    version = "0.1.0" }
 cordis-ui = { path = "crates/cordis-ui", version = "0.1.0" }
 
-# ── THE SHARED CRATES ────────────────────────────────────────────────────
-# The same crates the sequencer builds from phonix/crates, carried here so a
-# clone of this repository alone builds, with no access to anything else. A
-# change lands there first, with the sequencer's tests behind it, and is
-# copied here. Members opt in with `phonix-fx = { workspace = true }`.
-phonix-fx   = { path = "crates/phonix-fx" }
-phonix-dsp  = { path = "crates/phonix-dsp" }
-phonix-data = { path = "crates/phonix-data" }
+# ── THE SDK ──────────────────────────────────────────────────────────────
+# phonix-sdk, mirrored under vendor/ as a squashed subtree so a clone of this
+# repository alone builds. `git subtree pull --prefix vendor/phonix-sdk
+# <sdk> <tag> --squash` moves it; nothing under vendor/ is edited here.
+phonix-fx     = { path = "vendor/phonix-sdk/crates/phonix-fx", features = ["parametric-eq", "compressor", "reverb", "brickwall-limiter"] }
+phonix-legacy = { path = "vendor/phonix-sdk/crates/phonix-legacy" }
+# The effects crate as it was, kept until the A/B render against it has
+# passed; nothing but that test reaches it.
+phonix-fx-old = { package = "phonix-fx", path = "crates/phonix-fx" }
 # ──────────────────────────────────────────────────────────────────────────
 
 serde      = { version = "1.0", features = ["derive"] }

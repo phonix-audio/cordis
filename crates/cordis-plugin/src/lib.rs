@@ -14,8 +14,7 @@ use cordis::{CordisCommand, CordisEngine, CordisMeterState, CordisPatch};
 use cordis::state_buffer::{meter_channel, SharedReader, Writer};
 mod fx;
 mod vstpreset;
-use phonix_fx::effects::EffectsChain;
-use phonix_fx::fx_chain::FxChainSpec;
+use phonix_fx::{Chain, ChainSpec, Musical, Transport};
 use std::sync::atomic::{AtomicU64, Ordering};
 use vstpreset::ParamValue;
 
@@ -28,6 +27,9 @@ pub struct CordisPlugin {
     meter: Option<SharedReader<CordisMeterState>>,
     pending: Option<(mpsc::Receiver<CordisCommand>, Writer<CordisMeterState>)>,
     buf: Vec<f32>,
+    /// The engine's stereo pair, planar, for the chain.
+    buf_l: Vec<f32>,
+    buf_r: Vec<f32>,
     presets: Vec<CordisPatch>,
     last_preset: i32,
     last_knobs: Option<[f32; KNOBS]>,
@@ -35,7 +37,7 @@ pub struct CordisPlugin {
     /// rate, and EMPTY until a factory preset is explicitly loaded: a project
     /// saved before this existed drives it through no code path that fills it,
     /// so it stays a documented no-op and the audio is unchanged.
-    fx_chain: Option<EffectsChain>,
+    fx_chain: Option<Chain>,
     /// The chain the host side is running, and a counter bumped by whichever
     /// side last wrote it. NOT persisted: the patch carries the chain across a
     /// save. This is the channel between the audio thread and the editor, and
@@ -43,7 +45,7 @@ pub struct CordisPlugin {
     ///
     /// Always written BEFORE the counter is raised, so a reader that sees a
     /// new number is guaranteed to read the value that goes with it.
-    fx_live: Arc<RwLock<FxChainSpec>>,
+    fx_live: Arc<RwLock<ChainSpec>>,
     fx_rev: Arc<AtomicU64>,
     fx_seen: u64,
 }
@@ -59,9 +61,9 @@ impl Default for CordisPlugin {
         Self {
             params: Arc::new(CordisParams::new(presets.len(), Arc::new(names))),
             engine: None, tx, meter: Some(mr), pending: Some((rx, mw)),
-            buf: Vec::new(), presets, last_preset: 0, last_knobs: None,
+            buf: Vec::new(), buf_l: Vec::new(), buf_r: Vec::new(), presets, last_preset: 0, last_knobs: None,
             fx_chain: None,
-            fx_live: Arc::new(RwLock::new(FxChainSpec::default())),
+            fx_live: Arc::new(RwLock::new(ChainSpec::default())),
             fx_rev: Arc::new(AtomicU64::new(0)), fx_seen: 0,
         }
     }
@@ -272,9 +274,10 @@ impl Plugin for CordisPlugin {
         // Built here rather than in `Default` so it never carries a placeholder
         // rate, and re-rated in place on the second call for the same reason
         // the engine is.
+        let max_block = cfg.max_buffer_size as usize;
         match self.fx_chain.as_mut() {
-            Some(c) => c.set_sample_rate(cfg.sample_rate),
-            None => self.fx_chain = Some(EffectsChain::new(cfg.sample_rate)),
+            Some(c) => c.prepare(cfg.sample_rate, max_block),
+            None => self.fx_chain = Some(Chain::new(cfg.sample_rate, max_block)),
         }
         // Zero while the chain is empty, and again after a rate change until a
         // preset fills it. The limiter's lookahead is the only slot that ever
@@ -283,6 +286,8 @@ impl Plugin for CordisPlugin {
         ctx.set_latency_samples(lat as u32);
 
         self.buf = vec![0.0; cfg.max_buffer_size as usize * 2];
+        self.buf_l = vec![0.0; cfg.max_buffer_size as usize];
+        self.buf_r = vec![0.0; cfg.max_buffer_size as usize];
         let patch = self.params.patch_state.read().map(|p| p.clone()).unwrap_or_default();
         // A restored project brings its chain with it, inside the patch; one
         // saved before the field existed brings an empty spec, and an empty
@@ -335,7 +340,7 @@ impl Plugin for CordisPlugin {
                     ctx.set_latency_samples(c.latency_samples() as u32);
                 }
                 if let Ok(mut w) = self.fx_live.write() {
-                    *w = FxChainSpec::default();
+                    *w = ChainSpec::default();
                 }
                 self.fx_seen = self.fx_rev.fetch_add(1, Ordering::Relaxed) + 1;
             }
@@ -384,22 +389,20 @@ impl Plugin for CordisPlugin {
         if self.buf.len() < il { self.buf.resize(il, 0.0); }
         for s in &mut self.buf[..il] { *s = 0.0; }
         engine.process_audio(&mut self.buf[..il], 2);
-        // The chain runs in stereo in both branches, before any summing: the
-        // room's width and the compressor's stereo linkage need both channels.
-        let chain = self.fx_chain.as_mut();
+        // The chain runs in stereo before any summing: the room's width and
+        // the compressor's stereo linkage need both channels.
+        if self.buf_l.len() < n { self.buf_l.resize(n, 0.0); self.buf_r.resize(n, 0.0); }
+        for i in 0..n { self.buf_l[i] = self.buf[i * 2]; self.buf_r[i] = self.buf[i * 2 + 1]; }
+        if let Some(c) = self.fx_chain.as_mut() {
+            c.process(&mut self.buf_l[..n], &mut self.buf_r[..n], &[], Transport::default(), Musical::default());
+        }
         let ch = buffer.as_slice();
         if ch.len() >= 2 {
             let (l, r) = ch.split_at_mut(1);
-            for i in 0..n { l[0][i] = self.buf[i * 2]; r[0][i] = self.buf[i * 2 + 1]; }
-            if let Some(c) = chain { c.process_block_stereo(&mut l[0][..n], &mut r[0][..n]); }
+            l[0][..n].copy_from_slice(&self.buf_l[..n]);
+            r[0][..n].copy_from_slice(&self.buf_r[..n]);
         } else if !ch.is_empty() {
-            match chain {
-                Some(c) => for i in 0..n {
-                    let (fl, fr) = c.process(self.buf[i * 2], self.buf[i * 2 + 1]);
-                    ch[0][i] = (fl + fr) * 0.5;
-                },
-                None => for i in 0..n { ch[0][i] = (self.buf[i * 2] + self.buf[i * 2 + 1]) * 0.5; },
-            }
+            for i in 0..n { ch[0][i] = (self.buf_l[i] + self.buf_r[i]) * 0.5; }
         }
         ProcessStatus::Normal
     }

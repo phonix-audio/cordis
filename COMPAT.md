@@ -93,13 +93,23 @@ That is what curated means here, and it is why the order is listed above.
 that preset's chain: a fresh instance plays what its window says. The field's
 serde default is a different thing, and the difference is the whole
 compatibility story: a patch written before `fx` existed deserialises to an
-EMPTY chain, and an empty chain is a real no-op -- `EffectsChain` with zero
-slots returns its input untouched. A project saved before this existed keeps
+EMPTY chain, and an empty chain is a real no-op -- a `Chain` with zero slots
+returns its input untouched. A project saved before this existed keeps
 sounding as it did.
 
+The chain is a `phonix_fx::ChainSpec`: every slot names its kind and its
+parameters by string id (`"parametric-eq"`, `"band.0.gain"`, `"reverb"`,
+`"type": "room"`), and the slot's mix is the slot's. Those ids are the wire
+format. A patch written while the chain was an effect ordinal and `(pid,
+value)` pairs is read by `phonix_legacy` and renamed on the way in; the next
+save carries names. What the recipe writes for each kind, and the ranges and
+units of every parameter, live with the effect in `phonix_fx::effects`.
+
 Tests: `cordis`, `every_factory_preset_carries_its_own_chain`,
-`the_default_patch_is_the_first_preset_chain_included` and
-`a_patch_written_before_fx_existed_has_no_chain`; `cordis-plugin`,
+`the_default_patch_is_the_first_preset_chain_included`,
+`a_patch_written_before_fx_existed_has_no_chain`,
+`a_patch_written_with_the_old_chain_opens_named` and
+`the_recipe_names_only_what_the_build_has`; `cordis-plugin`,
 `an_empty_chain_is_bit_identical` and `a_fresh_instance_carries_the_first_preset_chain`;
 `cordis-ui`, `the_engine_mirror_does_not_erase_an_fx_edit`.
 

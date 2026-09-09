@@ -94,11 +94,13 @@ overflow rather than as a test failure. The bundling script wants `bash` and
 `python3`, and the Windows cross-build additionally wants `cargo-xwin` and
 `clang-cl`. macOS is not built.
 
-The effects come from three shared crates carried in `crates/` --
-`phonix-fx`, `phonix-dsp`, `phonix-data` -- the same ones the sequencer builds
-from, so a clone of this repository alone builds. `.github/workflows/ci.yml`
-builds and tests on Linux and Windows on every push, and a tag `v*` publishes
-both bundles as a release; none of it needs a secret.
+The effects, the audio-thread toolbox and the editor's design system come
+from the Phonix SDK, mirrored under `vendor/phonix-sdk` as a squashed git
+subtree so a clone of this repository alone builds; nothing under `vendor/`
+is edited here, and `git subtree pull --prefix vendor/phonix-sdk <sdk> <tag>
+--squash` moves it. `.github/workflows/ci.yml` builds and tests on Linux and
+Windows on every push, and a tag `v*` publishes both bundles as a release;
+none of it needs a secret.
 
 ## Measurement tools
 

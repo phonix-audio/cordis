@@ -65,11 +65,28 @@ pub struct CordisPatch {
     pub gain: f32,
     /// The master chain this patch is heard through: shelf, glue, room,
     /// ceiling. Appended, and empty by default, so a patch written before it
-    /// existed opens with no chain and sounds exactly as it did.
+    /// existed opens with no chain and sounds exactly as it did. A chain
+    /// written in the form before names were the wire format is read and
+    /// renamed on the way in.
     ///
     /// Described, never run. The host builds the live chain from it.
-    #[serde(default)]
-    pub fx: phonix_fx::fx_chain::FxChainSpec,
+    #[serde(default, deserialize_with = "fx_field")]
+    pub fx: phonix_fx::ChainSpec,
+}
+
+/// The two forms a chain was ever written in.
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum FxField {
+    Named(phonix_fx::ChainSpec),
+    Ordinal { slots: Vec<phonix_legacy::FxSlotState> },
+}
+
+fn fx_field<'de, D: serde::Deserializer<'de>>(d: D) -> Result<phonix_fx::ChainSpec, D::Error> {
+    Ok(match FxField::deserialize(d)? {
+        FxField::Named(spec) => spec,
+        FxField::Ordinal { slots } => phonix_legacy::convert_chain(&slots).0,
+    })
 }
 
 impl Default for CordisPatch {
@@ -115,7 +132,7 @@ pub const PRESET_GAIN: f32 = 1.5;
 pub fn factory_presets() -> Vec<CordisPatch> {
     use crate::fx::{chain, Room};
     let mk = |name: &str, voicing: f32, detune: f32, width: f32, damper: f32,
-              fx: phonix_fx::fx_chain::FxChainSpec| CordisPatch {
+              fx: phonix_fx::ChainSpec| CordisPatch {
         name: name.to_string(),
         voicing,
         unison_detune: detune,
@@ -286,14 +303,41 @@ mod tests {
     /// their own. Close Mics is the driest and Player's Seat the wettest.
     #[test]
     fn the_presets_are_not_all_heard_in_the_same_room() {
-        use phonix_fx::fx_params::pid;
         let mix = |name: &str| -> f32 {
             let p = factory_presets().into_iter().find(|p| p.name == name).unwrap();
-            p.fx.slots[2].params.iter().find(|(k, _)| *k == pid::REVERB_MIX).unwrap().1
+            p.fx.slots[2].mix
         };
         assert!(mix("Close Mics") < mix("Concert Grand"));
         assert!(mix("Concert Grand") < mix("Player's Seat"));
         assert!(mix("Tuned Dead") < mix("Close Mics"));
+    }
+
+    /// A patch written while the chain was ordinals and pids opens as the
+    /// same chain under its names, with nothing left behind.
+    #[test]
+    fn a_patch_written_with_the_old_chain_opens_named() {
+        let old = r#"{"name":"Concert Grand","voicing":0.5,"unison_detune":1.0,"width":0.7,
+            "damper":0.5,"tune":0.0,"gain":1.5,"fx":{"slots":[
+            {"effect_type":20,"enabled":true,"mix":1.0,"params":[[28,90.0],[38,0.7],[29,-3.0],[80,1.0],[79,1.0]]},
+            {"effect_type":8,"enabled":true,"mix":1.0,"params":[[60,-18.0],[61,2.0],[62,0.02],[63,0.15],[65,6.0],[66,1.0]]},
+            {"effect_type":2,"enabled":true,"mix":1.0,"params":[[16,1.0],[10,0.35],[11,0.4],[12,0.5],[13,0.008],[15,1.0],[14,0.22]]},
+            {"effect_type":28,"enabled":true,"mix":1.0,"params":[[28,-0.3],[29,50.0],[38,1.0]]}]}}"#;
+        let p: CordisPatch = serde_json::from_str(old).unwrap();
+        assert_eq!(p.fx.kinds().collect::<Vec<_>>(), ["parametric-eq", "compressor", "reverb", "brickwall-limiter"]);
+        assert_eq!(p.fx.slots[0].f32("band.0.gain"), Some(-3.0));
+        assert_eq!(p.fx.slots[2].variant("type"), Some("room"));
+        assert_eq!(p.fx.slots[2].mix, 0.22);
+        // The old chain never wrote the compressor's mode; the plugin set it.
+        // Its band mask named every band, on or off; the recipe names the
+        // ones it turns off.
+        let mut want = crate::fx::concert_hall();
+        want.slots[1].params.remove("mode");
+        want.slots[0].set("band.0.enabled", true);
+        assert_eq!(p.fx, want);
+        let report = p.fx.check(&phonix_fx::Registry::builtin());
+        assert!(report.is_clean(), "{report}");
+        let again: CordisPatch = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert_eq!(again.fx, p.fx, "a named chain does not survive a round trip");
     }
 
     /// A session written before `mechanics` and `release_noise` existed must

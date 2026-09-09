@@ -19,6 +19,7 @@ crate-type = ["rlib"]
 # effect; the host does. Same reason solstice, nebula and aurora carry
 # this dependency.
 phonix-fx = { workspace = true }
+phonix-legacy = { workspace = true }
 serde = { workspace = true }
 
 # Scheduling only, and only on Linux: the worker threads that share a sample

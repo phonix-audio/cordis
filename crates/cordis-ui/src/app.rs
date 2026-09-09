@@ -285,13 +285,13 @@ impl CordisApp {
     /// Called when a preset change replaced it, which is the one case the
     /// editor cannot see for itself: a preset can be changed by automation,
     /// with no click in this window.
-    pub fn set_fx(&mut self, spec: phonix_fx::fx_chain::FxChainSpec) {
+    pub fn set_fx(&mut self, spec: phonix_fx::ChainSpec) {
         self.patch.fx = spec;
         self.fx_dirty = false;
     }
 
     /// The chain as the editor holds it.
-    pub fn fx(&self) -> &phonix_fx::fx_chain::FxChainSpec {
+    pub fn fx(&self) -> &phonix_fx::ChainSpec {
         &self.patch.fx
     }
 
@@ -509,16 +509,13 @@ mod tests {
     /// the control. This is that bug, pinned.
     #[test]
     fn the_engine_mirror_does_not_erase_an_fx_edit() {
-        use phonix_fx::fx_params::pid;
-
         let (tx, _rx) = std::sync::mpsc::channel();
         let (mut writer, reader) = meter_channel::<CordisMeterState>();
         let mut app = CordisApp::new(tx, reader);
 
         // What the engine last saw: the preset, room reverb.
         let engine_patch = CordisPatch::default();
-        let room = engine_patch.fx.slots[2]
-            .params.iter().find(|(k, _)| *k == pid::REVERB_TYPE).unwrap().1;
+        assert_eq!(engine_patch.fx.slots[2].variant("type"), Some("room"));
         {
             let s = writer.edit();
             s.patch_snapshot = Some(engine_patch);
@@ -527,19 +524,12 @@ mod tests {
 
         // What the page just set: a different reverb.
         app.set_fx(CordisPatch::default().fx);
-        let slot = &mut app.patch.fx.slots[2];
-        for e in slot.params.iter_mut() {
-            if e.0 == pid::REVERB_TYPE {
-                e.1 = room + 4.0;
-            }
-        }
+        app.patch.fx.slots[2].set("type", "cathedral");
 
         app.sync_cooldown = 0;
         app.refresh_meters(true);
 
-        let after = app.patch.fx.slots[2]
-            .params.iter().find(|(k, _)| *k == pid::REVERB_TYPE).unwrap().1;
-        assert_eq!(after, room + 4.0, "the mirror put the preset's reverb back");
+        assert_eq!(app.patch.fx.slots[2].variant("type"), Some("cathedral"), "the mirror put the preset's reverb back");
     }
 
     /// The window is drawn for one size; if the constants and the plugin's
