@@ -18,27 +18,18 @@ repository = "https://github.com/phonix-audio/cordis"
 cordis    = { path = "crates/cordis",    version = "0.1.0" }
 cordis-ui = { path = "crates/cordis-ui", version = "0.1.0" }
 
-# ── THE SDK SWITCH ────────────────────────────────────────────────────────
-# The seven shared crates are NOT published and there is no SDK repository yet,
-# so today they are path dependencies on the sibling phonix checkout. This
-# block is the ONLY place they are named: no member crate carries a path.
-#
-# The day the shared crates get a repository and tags, replace the seven lines
-# below with the git form and nothing else in this repository changes:
-#
-#   phonix-rt     = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.0" }
-#   phonix-dsp    = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.0" }
-#   ...
-#
-# Members opt in with `phonix-dsp = { workspace = true }`; the ones this
-# plugin does not use simply stay unreferenced here.
-phonix-rt     = { path = "../phonix/crates/phonix-rt" }
-phonix-dsp    = { path = "../phonix/crates/phonix-dsp" }
-phonix-data   = { path = "../phonix/crates/phonix-data" }
-phonix-ui     = { path = "../phonix/crates/phonix-ui" }
-phonix-fx     = { path = "../phonix/crates/phonix-fx" }
-phonix-fx-ui  = { path = "../phonix/crates/phonix-fx-ui" }
-phonix-preset = { path = "../phonix/crates/phonix-preset" }
+# ── THE SHARED CRATES ────────────────────────────────────────────────────
+# They come from phonix-sdk, by tag and never by branch, so a build today and
+# a build next year see the same code. This block is the ONLY place they are
+# named: members opt in with `phonix-fx = { workspace = true }`, and the ones
+# this plugin does not use simply stay unreferenced here.
+phonix-rt     = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
+phonix-dsp    = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
+phonix-data   = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
+phonix-ui     = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
+phonix-fx     = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
+phonix-fx-ui  = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
+phonix-preset = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
 # ──────────────────────────────────────────────────────────────────────────
 
 serde      = { version = "1.0", features = ["derive"] }

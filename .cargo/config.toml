@@ -13,3 +13,8 @@ rustflags = ["-C", "target-cpu=x86-64-v3"]
 # committed) virtual memory, so harmless for the app at runtime.
 RUST_MIN_STACK = "16777216"  # 16 MiB
 
+
+[net]
+# The shared crates live in a private repository: fetch them with the git
+# binary, which holds the credentials, rather than with cargo's own client.
+git-fetch-with-cli = true
