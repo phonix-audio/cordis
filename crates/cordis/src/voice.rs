@@ -104,7 +104,7 @@ pub(crate) static PER_STRING_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(
 /// Put the engine on the per-string sympathetic model for as long as the guard
 /// lives, and back on the shared bank afterwards — panic or not.
 #[cfg(test)]
-pub(crate) struct PerStringModel(std::sync::MutexGuard<'static, ()>);
+pub(crate) struct PerStringModel(#[allow(dead_code)] std::sync::MutexGuard<'static, ()>);
 
 #[cfg(test)]
 impl PerStringModel {

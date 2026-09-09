@@ -1998,7 +1998,7 @@ mod attach_probe {
             let f0 = 440.0 * 2f64.powf((note as f64 - 69.0) / 12.0);
             let mut line = format!("    note {note:3} ");
             for which in 0..2 {
-                let mut b = Soundboard::new(sr, 0.7);
+                let b = Soundboard::new(sr, 0.7);
                 let att = b.attachment_shared(note);
                 let n = b.bank.len();
                 let ear: Vec<f64> = if which == 0 {
@@ -2009,7 +2009,7 @@ mod attach_probe {
                         .sqrt();
                     vec![r; n]
                 };
-                let mut amp = |hz: f64| -> f64 {
+                let amp = |hz: f64| -> f64 {
                     let mut bb = Soundboard::new(sr, 0.7);
                     let steps = (sr as usize) / 4;
                     let (mut re, mut im) = (0.0f64, 0.0f64);
@@ -2157,7 +2157,7 @@ mod attach_probe {
     #[ignore]
     fn bass_response_at_the_listener() {
         let sr = 48_000.0f32;
-        let mut b = Soundboard::new(sr, 0.7);
+        let b = Soundboard::new(sr, 0.7);
         let att = b.attachment_shared(36);
         eprintln!("  radiated level driving the C2 bridge point, dB (65 Hz = P1, 131 = P2, 196 = P3):");
         let mut hz = 55.0f64;

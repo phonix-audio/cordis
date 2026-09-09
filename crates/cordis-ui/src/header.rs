@@ -219,15 +219,18 @@ mod tests {
         vec!["Concert Grand".to_string(), "Felted".to_string(), "Honky".to_string()]
     }
 
+    /// The references are taken edge to edge; kittest's `build_ui` pads by 8 px.
+    #[allow(deprecated)]
     fn harness() -> Harness<'static> {
         let names = bank();
         Harness::builder()
             .with_size(egui::vec2(1280.0, 44.0))
             .build(move |ctx| {
                 crate::theme::apply_visuals(ctx);
+                let mut root = egui::Ui::new(ctx.clone(), egui::Id::new("root"), egui::UiBuilder::new().max_rect(ctx.content_rect()));
                 egui::CentralPanel::default()
                     .frame(egui::Frame::NONE)
-                    .show(ctx, |ui| {
+                    .show_inside(&mut root, |ui| {
                         let r = ui.max_rect();
                         draw(ui, r, &names[0], &names, 0, 0);
                     });

@@ -115,7 +115,8 @@ fn main() {
         };
         let a = render(Kernel::F64);
         let peak = a.iter().fold(0.0f32, |m, x| m.max(x.abs()));
-        for k in [Kernel::F32] {
+        {
+            let k = Kernel::F32;
             let b = render(k);
             let worst = a
                 .iter()

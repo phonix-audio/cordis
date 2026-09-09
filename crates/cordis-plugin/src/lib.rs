@@ -187,7 +187,6 @@ impl Plugin for CordisPlugin {
         create_egui_editor(self.params.editor_state.clone(), app, Default::default(),
             |_c, _q, _a| {},
             move |ui, setter, _q, app| {
-                let ctx = ui.ctx().clone();
                 // A preset change replaced the chain: adopt it before
                 // drawing, or the page shows the previous preset's effects.
                 let rev = fx_rev.load(Ordering::Relaxed);
@@ -197,7 +196,7 @@ impl Plugin for CordisPlugin {
                         seen.store(rev, Ordering::Relaxed);
                     }
                 }
-                app.draw_ui(&ctx);
+                app.draw_ui(ui);
                 // Every request goes through the HOST PARAMETER, so the
                 // parameter, the engine and the window can never disagree.
                 // The page moved something. Publish it, THEN raise the

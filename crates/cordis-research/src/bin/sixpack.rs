@@ -30,7 +30,6 @@ struct Report {
     over: usize,
     blocks: usize,
     voices_peak: usize,
-    voices_end: usize,
     budget_end: usize,
     sheds: u64,
     /// Median and p99 of the per-block time, and the two means that matter:
@@ -101,7 +100,7 @@ fn run_instance(
     }
 
     sync.fetch_add(1, Ordering::SeqCst);
-    while sync.load(Ordering::SeqCst) % (parties + 1) != 0 {
+    while !sync.load(Ordering::SeqCst).is_multiple_of(parties + 1) {
         std::hint::spin_loop();
     }
 
@@ -149,7 +148,6 @@ fn run_instance(
         over,
         blocks,
         voices_peak,
-        voices_end: eng.live_voices(),
         budget_end: eng.voice_budget(),
         sheds: eng.sheds_total(),
         p50_ms: sorted[sorted.len() / 2],

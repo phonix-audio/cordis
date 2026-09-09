@@ -38,7 +38,7 @@ fn run_instance(id: usize, capped: bool, sync: Arc<AtomicUsize>) -> (f64, usize,
 
     // Everyone waits at the line so the six render TOGETHER — the whole point.
     sync.fetch_add(1, Ordering::SeqCst);
-    while sync.load(Ordering::SeqCst) % (INSTANCES + 1) != 0 {
+    while !sync.load(Ordering::SeqCst).is_multiple_of(INSTANCES + 1) {
         std::hint::spin_loop();
     }
 

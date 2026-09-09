@@ -3376,7 +3376,7 @@ fn the_hammer_string_balance_is_the_measured_one() {
     for (note, want) in MEASURED {
         let d = crate::scale::design(note);
         let m_string = d.mu * d.length * d.strings as f64;
-        let got = crate::hammer::hammer_mass_for(note as f64) / m_string;
+        let got = crate::hammer::hammer_mass(note as f64) / m_string;
         assert!(
             (got / want - 1.0).abs() < 0.20,
             "note {note}: hammer-string mass ratio {got:.3}, Chaigne & Askenfelt \
@@ -3394,7 +3394,7 @@ fn audit_the_hammer_string_balance() {
     for note in [21u8, 27, 36, 45, 53, 60, 72, 84, 91, 96, 108] {
         let d = crate::scale::design(note);
         let m_string = d.mu * d.length * d.strings as f64;
-        let m_hammer = crate::hammer::hammer_mass_for(note as f64);
+        let m_hammer = crate::hammer::hammer_mass(note as f64);
         let ratio = m_hammer / m_string;
         let want = MEASURED.iter().find(|(n, _)| *n == note).map(|(_, r)| *r);
         match want {
@@ -4911,7 +4911,7 @@ fn audit_where_the_treble_loses_its_level() {
             out_peak = out_peak.max(o.abs());
             out_rms += o * o;
         }
-        let m = crate::hammer::hammer_mass_for(note as f64);
+        let m = crate::hammer::hammer_mass(note as f64);
         rows.push((
             note,
             impulse,
@@ -6419,7 +6419,7 @@ fn audit_epsilon_on_the_middle() {
             let f = v.tick(y, c);
             board.drive_at(&v.attach, f);
             let (l, r) = board.advance();
-            if i as f32 > 0.02*sr { *slot = ((l+r)*0.5); }
+            if i as f32 > 0.02*sr { *slot = (l+r)*0.5; }
             if v.contact_force() > 0.0 { contact += 1; }
         }
         let mut buf: Vec<Complex<f32>> = x.iter().enumerate().map(|(k,&v)| {
@@ -6457,7 +6457,7 @@ fn audit_the_pulse_zero_in_the_middle() {
     eprintln!("\n note  f0    contact ms  s_H/T1   1er zero (Hz)   K feutre    p");
     for note in [53u8, 60, 64, 69, 72, 76, 81] {
         let d = crate::scale::design(note);
-        let m = crate::string::StringModes::build(&d, 1.0, sr);
+        let _ = crate::string::StringModes::build(&d, 1.0, sr);
         let mut v = crate::voice::Voice::default();
         let board = crate::soundboard::Soundboard::new(sr, 0.7);
         v.start(note, 3.0, 1.0, 0.5, 0.5, sr);

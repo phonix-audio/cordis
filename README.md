@@ -16,8 +16,9 @@ and damping; Chaigne & Askenfelt (JASA 1994) for the hammer felt.
 
 ## Status
 
-Not released. The model runs and the tests are green; what is open is below,
-and the first line is what one hears.
+Released: `v0.1.0` ships Linux and Windows VST3 and CLAP bundles from the
+Releases page, built by CI from the tag. The model runs and the tests are
+green; what is open is below, and the first line is what one hears.
 
 | open | |
 |---|---|
@@ -69,6 +70,21 @@ thing and one thing only; putting the worker threads at the audio callback's
 real-time priority, which is a Linux syscall; and nothing in the DSP touches
 it; on every other target the engine is serde alone. There is no `[features]`
 table in `crates/cordis/Cargo.toml`, and the absence is the contract.
+
+## Installing
+
+Take the archive for your platform from the Releases page and unzip it:
+
+    Linux      Cordis.vst3/  ->  ~/.vst3/            Cordis.clap  ->  ~/.clap/
+    Windows    Cordis.vst3\  ->  C:\Program Files\Common Files\VST3\
+               Cordis.clap   ->  C:\Program Files\Common Files\CLAP\
+
+The binaries are built for `x86-64-v3`: they need an x86-64 CPU with AVX2 and
+FMA, which is any Intel from Haswell (2013) or AMD from Excavator (2015) on. An
+older machine gets an illegal-instruction crash on load rather than a message;
+build from source with the `target-cpu` line in `.cargo/config.toml` changed.
+The Windows binaries are not code-signed: SmartScreen asks once. macOS is not
+built.
 
 ## Building
 

@@ -187,7 +187,7 @@ fn felt_from_the_measurements(note: f64) -> (f64, f64) {
 pub(crate) static TOP_MASS_OVERRIDE: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(f64::to_bits(3.50e-3));
 
-fn hammer_mass(note: f64) -> f64 {
+pub(crate) fn hammer_mass(note: f64) -> f64 {
     // Chabassier's five weighed hammers, and Conklin's ends.
     //
     // Conklin — a Baldwin design engineer — gives the largest bass hammers "around
@@ -2178,7 +2178,7 @@ mod tests {
         bank.set_substep(steps);
         let dt = 1.0 / SR as f64;
         let dts = dt / steps as f64;
-        let c_eff = ham.inertia_substep() + bank.compliance_sub(&sm.strike);
+        let _ = ham.inertia_substep() + bank.compliance_sub(&sm.strike);
         let n = (SR as f64 * 0.3) as usize;
         let mut out = vec![0.0f64; n];
         let mut contact_samples = 0usize;
@@ -2925,12 +2925,6 @@ mod ff_probe {
     /// equally: that is a shrill note, not a round one. The published envelope is
     /// usually quoted at a moderate blow, so the question here is what the felt
     /// does when it is hit hard.
-    /// The spectrum of the FORCE the felt applies, at a hard blow in the treble,
-    /// against the spectrum of what comes out at the bridge. If the force is
-    /// already flat, the excitation is what makes the note shrill; if the force
-    /// falls and the output does not, the string-to-bridge chain is lifting it.
-    #[test]
-    #[ignore]
     /// The string alone, factor by factor: what the chain predicts for the second
     /// partial against what the string actually delivers at the bridge.
     #[test]
@@ -2988,6 +2982,13 @@ mod ff_probe {
         }
     }
 
+    /// The spectrum of the FORCE the felt applies, at a hard blow in the treble,
+    /// against the spectrum of what comes out at the bridge. If the force is
+    /// already flat, the excitation is what makes the note shrill; if the force
+    /// falls and the output does not, the string-to-bridge chain is lifting it.
+    #[test]
+    #[ignore]
+    #[allow(non_snake_case)]
     fn force_vs_output_treble_forte() {
         use crate::modal_bank::ModalBank;
         use crate::string::StringModes;

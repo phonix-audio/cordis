@@ -168,7 +168,10 @@ impl CordisApp {
         }
     }
 
-    pub fn draw_ui(&mut self, ctx: &egui::Context) {
+    /// Draw the whole window into `ui`, the root the host hands over.
+    pub fn draw_ui(&mut self, ui: &mut Ui) {
+        let ctx = ui.ctx().clone();
+        let ctx = &ctx;
         egui_extras::install_image_loaders(ctx);
         if !self.fonts_ready {
             theme::install_fonts(ctx);
@@ -184,7 +187,7 @@ impl CordisApp {
 
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(BG_LACQUER))
-            .show(ctx, |ui| {
+            .show_inside(ui, |ui| {
                 let full = ui.max_rect();
                 gradient_v(ui, full, LACQUER_TOP, LACQUER_BOTTOM);
 
@@ -445,11 +448,19 @@ mod tests {
     use egui_kittest::Harness;
     use cordis::state_buffer::meter_channel;
 
+    /// The root `Ui` a host hands the editor: the whole screen, no margin.
+    /// kittest's `build_ui` pads its root by 8 px, and the references are
+    /// taken edge to edge, so the harnesses build on the context instead.
+    fn root(ctx: &egui::Context) -> Ui {
+        Ui::new(ctx.clone(), egui::Id::new("root"), egui::UiBuilder::new().max_rect(ctx.content_rect()))
+    }
+
+    #[allow(deprecated)]
     fn harness(app: CordisApp) -> Harness<'static> {
         let mut app = app;
         Harness::builder()
             .with_size(egui::vec2(W, H))
-            .build(move |ctx| app.draw_ui(ctx))
+            .build(move |ctx| app.draw_ui(&mut root(ctx)))
     }
 
     #[test]
@@ -573,6 +584,7 @@ mod tests {
     /// to the layout shows up as a keyboard and not as a wall of pixels.
     #[test]
     #[ignore = "needs a rendering backend"]
+    #[allow(deprecated)]
     fn cordis_keyboard_snapshot() {
         let mut state = crate::keyboard::KeyboardState::default();
         state.active = vec![21, 40, 52, 59, 64, 108];
@@ -582,7 +594,7 @@ mod tests {
                 theme::apply_visuals(ctx);
                 egui::CentralPanel::default()
                     .frame(egui::Frame::NONE.fill(BG_LACQUER))
-                    .show(ctx, |ui| {
+                    .show_inside(&mut root(ctx), |ui| {
                         let r = ui.max_rect().shrink2(egui::vec2(16.0, 12.0));
                         crate::keyboard::draw(ui, r, &mut state);
                     });
@@ -594,6 +606,7 @@ mod tests {
     /// The instrument alone, pedal down and a chord ringing.
     #[test]
     #[ignore = "needs a rendering backend"]
+    #[allow(deprecated)]
     fn cordis_scene_snapshot() {
         let notes = [40u8, 52, 59, 64];
         let mut h = Harness::builder()
@@ -602,7 +615,7 @@ mod tests {
                 theme::apply_visuals(ctx);
                 egui::CentralPanel::default()
                     .frame(egui::Frame::NONE.fill(BG_LACQUER))
-                    .show(ctx, |ui| {
+                    .show_inside(&mut root(ctx), |ui| {
                         let r = ui.max_rect();
                         scene::draw(
                             ui,
