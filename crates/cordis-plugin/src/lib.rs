@@ -15,6 +15,7 @@ use cordis::state_buffer::{meter_channel, SharedReader, Writer};
 mod fx;
 use phonix_fx::{Chain, ChainSpec, Musical, Transport};
 use std::sync::atomic::{AtomicU64, Ordering};
+use fx::FxLink;
 use phonix_plugin::vstpreset::{self, ParamValue};
 
 const KNOBS: usize = 8;
@@ -37,15 +38,10 @@ pub struct CordisPlugin {
     /// saved before this existed drives it through no code path that fills it,
     /// so it stays a documented no-op and the audio is unchanged.
     fx_chain: Option<Chain>,
-    /// The chain the host side is running, and a counter bumped by whichever
-    /// side last wrote it. NOT persisted: the patch carries the chain across a
-    /// save. This is the channel between the audio thread and the editor, and
-    /// it exists because neither can see the other's copy.
-    ///
-    /// Always written BEFORE the counter is raised, so a reader that sees a
-    /// new number is guaranteed to read the value that goes with it.
-    fx_live: Arc<RwLock<ChainSpec>>,
-    fx_rev: Arc<AtomicU64>,
+    /// The chain between the editor and the audio thread. NOT persisted: the
+    /// patch carries the chain across a save. It exists because neither side
+    /// can see the other's copy.
+    fx_link: Arc<FxLink>,
     fx_seen: u64,
 }
 
@@ -62,8 +58,7 @@ impl Default for CordisPlugin {
             engine: None, tx, meter: Some(mr), pending: Some((rx, mw)),
             buf: Vec::new(), buf_l: Vec::new(), buf_r: Vec::new(), presets, last_preset: 0, last_knobs: None,
             fx_chain: None,
-            fx_live: Arc::new(RwLock::new(ChainSpec::default())),
-            fx_rev: Arc::new(AtomicU64::new(0)), fx_seen: 0,
+            fx_link: Arc::new(FxLink::new(ChainSpec::default())), fx_seen: 0,
         }
     }
 }
@@ -176,39 +171,36 @@ impl Plugin for CordisPlugin {
         if let Ok(p) = patch_state.read() { app.set_patch(p.clone()); }
         let host_params = self.params.clone();
         let bank = self.presets.clone();
-        let fx_rev = self.fx_rev.clone();
-        let fx_live = self.fx_live.clone();
+        let fx_link = self.fx_link.clone();
         // The closure must be Sync, so the counter it remembers is an atomic.
-        let seen = AtomicU64::new(fx_rev.load(Ordering::Relaxed));
+        let seen = AtomicU64::new(fx_link.rev());
         // Seed the page from the restored patch, as the patch itself is above.
         if let Ok(p) = self.params.patch_state.read() {
-            if let Ok(mut w) = self.fx_live.write() { *w = p.fx.clone(); }
+            self.fx_link.seed(p.fx.clone());
         }
         create_egui_editor(self.params.editor_state.clone(), app, Default::default(),
             |_c, _q, _a| {},
             move |ui, setter, _q, app| {
                 // A preset change replaced the chain: adopt it before
                 // drawing, or the page shows the previous preset's effects.
-                let rev = fx_rev.load(Ordering::Relaxed);
-                if rev != seen.load(Ordering::Relaxed) {
-                    if let Ok(spec) = fx_live.read() {
-                        app.set_fx(spec.clone());
-                        seen.store(rev, Ordering::Relaxed);
-                    }
+                let mut seen_now = seen.load(Ordering::Relaxed);
+                if let Some(spec) = fx_link.adopt(&mut seen_now) {
+                    app.set_fx(spec);
+                    seen.store(seen_now, Ordering::Relaxed);
                 }
                 app.draw_ui(ui);
-                // Every request goes through the HOST PARAMETER, so the
-                // parameter, the engine and the window can never disagree.
-                // The page moved something. Publish it, THEN raise the
-                // counter: the audio thread reads the value only because the
-                // number changed, so the number must be the last thing to.
+                // The page moved something: publish it, and the audio thread
+                // takes it on its next block.
                 if app.take_fx_changed() {
-                    if let Ok(mut w) = fx_live.write() {
-                        *w = app.fx().clone();
-                    }
-                    seen.store(fx_rev.fetch_add(1, Ordering::Relaxed) + 1, Ordering::Relaxed);
+                    seen.store(fx_link.publish(app.fx().clone()), Ordering::Relaxed);
                 }
                 if let Some(i) = app.take_wants_preset() {
+                    // The preset's chain goes through the link as well as
+                    // through the parameter: a preset picked again is the
+                    // same parameter value, and the audio thread would never
+                    // hear of it otherwise, while the page already shows it.
+                    let chain = bank.get((i - 1).max(0) as usize).filter(|_| i > 0).map(|p| p.fx.clone()).unwrap_or_default();
+                    seen.store(fx_link.publish(chain), Ordering::Relaxed);
                     setter.begin_set_parameter(&host_params.preset);
                     setter.set_parameter(&host_params.preset, i);
                     setter.end_set_parameter(&host_params.preset);
@@ -293,7 +285,8 @@ impl Plugin for CordisPlugin {
         if let Some(c) = self.fx_chain.as_mut() {
             fx::apply(c, &patch.fx);
         }
-        self.fx_seen = self.fx_rev.load(Ordering::Relaxed);
+        self.fx_link.seed(patch.fx.clone());
+        self.fx_seen = self.fx_link.rev();
         let _ = self.tx.send(CordisCommand::LoadPatch(Box::new(patch)));
         self.last_preset = self.params.preset.value();
         // Force the knob diff in `process` to resend all eight Set commands, so
@@ -325,10 +318,7 @@ impl Plugin for CordisPlugin {
                         fx::apply(c, &p.fx);
                         ctx.set_latency_samples(c.latency_samples() as u32);
                     }
-                    if let Ok(mut w) = self.fx_live.write() {
-                        *w = p.fx.clone();
-                    }
-                    self.fx_seen = self.fx_rev.fetch_add(1, Ordering::Relaxed) + 1;
+                    self.fx_seen = self.fx_link.publish(p.fx.clone());
                 }
             } else {
                 // Back to Init: the curated chain goes with the preset it came
@@ -337,21 +327,18 @@ impl Plugin for CordisPlugin {
                     fx::disengage(c);
                     ctx.set_latency_samples(c.latency_samples() as u32);
                 }
-                if let Ok(mut w) = self.fx_live.write() {
-                    *w = ChainSpec::default();
-                }
-                self.fx_seen = self.fx_rev.fetch_add(1, Ordering::Relaxed) + 1;
+                self.fx_seen = self.fx_link.publish(ChainSpec::default());
             }
         }
-        // An edit made on the FX page. The lock is only taken when the counter
-        // moved, and `try_read` rather than `read` because this is the audio
-        // thread: a frame missed here is picked up on the next block.
-        let rev = self.fx_rev.load(Ordering::Relaxed);
-        if rev != self.fx_seen {
-            if let (Some(c), Ok(spec)) = (self.fx_chain.as_mut(), self.fx_live.try_read()) {
-                fx::apply(c, &spec);
-                ctx.set_latency_samples(c.latency_samples() as u32);
-                self.fx_seen = rev;
+        // An edit made on the FX page, or a preset picked there again.
+        if let Some(c) = self.fx_chain.as_mut() {
+            let mut latency = None;
+            self.fx_link.apply_if_new(&mut self.fx_seen, |spec| {
+                fx::apply(c, spec);
+                latency = Some(c.latency_samples() as u32);
+            });
+            if let Some(l) = latency {
+                ctx.set_latency_samples(l);
             }
         }
         let sig = self.params.knob_sig();
