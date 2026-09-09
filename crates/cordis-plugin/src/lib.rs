@@ -87,6 +87,7 @@ struct CordisParams {
 impl CordisParams {
     fn new(count: usize, names: Arc<Vec<String>>) -> Self {
         let n1 = names.clone();
+        let d = CordisPatch::default();
         Self {
             // The editor draws a fixed composition; the window takes its size
             // from the constants that composition is laid out against, so the
@@ -99,14 +100,18 @@ impl CordisParams {
             preset: IntParam::new("Preset", 0, IntRange::Linear { min: 0, max: count as i32 })
                 .with_value_to_string(Arc::new(move |v| n1.get(v as usize).cloned().unwrap_or_else(|| format!("P{v}"))))
                 .with_string_to_value(Arc::new(move |s| names.iter().position(|n| n.eq_ignore_ascii_case(s)).map(|i| i as i32))),
-            voicing: FloatParam::new("Voicing", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            unison: FloatParam::new("Unison", 2.5, FloatRange::Linear { min: 0.0, max: 12.0 }).with_unit(" cents"),
-            width: FloatParam::new("Spread", 0.7, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            damper: FloatParam::new("Dampers", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            action: FloatParam::new("Action", 0.35, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            release: FloatParam::new("Release", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
-            tune: FloatParam::new("Tune", 0.0, FloatRange::Linear { min: -50.0, max: 50.0 }).with_unit(" cents"),
-            gain: FloatParam::new("Gain", 0.9, FloatRange::Linear { min: 0.0, max: 2.0 }),
+            // Defaults come from the default patch, never from a second set of
+            // literals: `process` resends every knob on the first block, so a
+            // parameter default that disagrees with the patch silently wins
+            // over it.
+            voicing: FloatParam::new("Voicing", d.voicing, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            unison: FloatParam::new("Unison", d.unison_detune, FloatRange::Linear { min: 0.0, max: 12.0 }).with_unit(" cents"),
+            width: FloatParam::new("Spread", d.width, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            damper: FloatParam::new("Dampers", d.damper, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            action: FloatParam::new("Action", d.mechanics, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            release: FloatParam::new("Release", d.release_noise, FloatRange::Linear { min: 0.0, max: 1.0 }),
+            tune: FloatParam::new("Tune", d.tune, FloatRange::Linear { min: -50.0, max: 50.0 }).with_unit(" cents"),
+            gain: FloatParam::new("Gain", d.gain, FloatRange::Linear { min: 0.0, max: 2.0 }),
         }
     }
     fn knob_sig(&self) -> [f32; KNOBS] {
@@ -169,6 +174,7 @@ impl Plugin for CordisPlugin {
         // closure below publishes the default patch over it.
         if let Ok(p) = patch_state.read() { app.set_patch(p.clone()); }
         let host_params = self.params.clone();
+        let bank = self.presets.clone();
         let fx_rev = self.fx_rev.clone();
         let fx_live = self.fx_live.clone();
         // The closure must be Sync, so the counter it remembers is an atomic.
@@ -206,6 +212,22 @@ impl Plugin for CordisPlugin {
                     setter.begin_set_parameter(&host_params.preset);
                     setter.set_parameter(&host_params.preset, i);
                     setter.end_set_parameter(&host_params.preset);
+                    // The knobs follow, or the host's lanes keep the old
+                    // values while the engine plays the new ones, and the
+                    // first touched knob snaps the instrument back.
+                    if let Some(p) = bank.get((i - 1).max(0) as usize).filter(|_| i > 0) {
+                        let knobs: [(&FloatParam, f32); 8] = [
+                            (&host_params.voicing, p.voicing), (&host_params.unison, p.unison_detune),
+                            (&host_params.width, p.width), (&host_params.damper, p.damper),
+                            (&host_params.action, p.mechanics), (&host_params.release, p.release_noise),
+                            (&host_params.tune, p.tune), (&host_params.gain, p.gain),
+                        ];
+                        for (param, v) in knobs {
+                            setter.begin_set_parameter(param);
+                            setter.set_parameter(param, v);
+                            setter.end_set_parameter(param);
+                        }
+                    }
                 }
                 if let Ok(mut p) = patch_state.write() { *p = app.current_patch(); }
             })
