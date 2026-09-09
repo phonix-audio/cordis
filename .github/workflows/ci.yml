@@ -1,0 +1,100 @@
+# Builds, tests and bundles the plugin on Linux and Windows. A tag `v*` also
+# publishes both bundles as a GitHub release.
+#
+# The shared crates come from the private phonix-sdk repository, read with
+# the SDK_READ_TOKEN secret: a fine-grained token with read access to that
+# repository's contents, and nothing else.
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  # Fetch git dependencies with the git binary, so the credential rewrite
+  # below applies to them.
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            arch_dir: x86_64-linux
+            lib: libcordis_plugin.so
+            vst3_ext: so
+          - os: windows-latest
+            platform: windows
+            arch_dir: x86_64-win
+            lib: cordis_plugin.dll
+            vst3_ext: vst3
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the shared crates
+        shell: bash
+        run: git config --global url."https://x-access-token:${{ secrets.SDK_READ_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Linux build prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libgl-dev libjack-dev libx11-xcb-dev libxcb1-dev libxcb-dri2-0-dev libxcb-icccm4-dev libxcursor-dev libxkbcommon-dev libxcb-shape0-dev libxcb-xfixes0-dev
+
+      # Reads rust-toolchain.toml.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = Linux ]; then
+            cargo test --release --workspace
+          else
+            cargo test --release -p cordis-plugin -p cordis-ui
+          fi
+
+      - name: Build the plugin
+        run: cargo build --release -p cordis-plugin
+
+      # Layout per the VST3 spec: <Name>.vst3/Contents/<arch>/<Name>.<ext>.
+      # A CLAP is the same shared object under a .clap name.
+      - name: Bundle
+        shell: bash
+        run: |
+          NAME=$(python3 -c 'import re;print(re.search(r"^name\s*=\s*\"([^\"]+)\"", open("bundler.toml").read(), re.M).group(1))')
+          OUT="dist/${{ matrix.platform }}"
+          DEST="$OUT/$NAME.vst3/Contents/${{ matrix.arch_dir }}"
+          mkdir -p "$DEST"
+          cp "target/release/${{ matrix.lib }}" "$DEST/$NAME.${{ matrix.vst3_ext }}"
+          cp "target/release/${{ matrix.lib }}" "$OUT/$NAME.clap"
+          cd "$OUT" && 7z a -tzip "../$NAME-${{ matrix.platform }}-x86_64.zip" . > /dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: dist/*.zip
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/*.zip --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --generate-notes

@@ -92,7 +92,14 @@ architecture. And it raises `RUST_MIN_STACK` to 16 MiB, because a debug
 tree sums past it; building from outside this config will hit that as a stack
 overflow rather than as a test failure. The bundling script wants `bash` and
 `python3`, and the Windows cross-build additionally wants `cargo-xwin` and
-`clang-cl`. Only Linux is built and tested here; macOS is not.
+`clang-cl`. macOS is not built.
+
+The effects come from the shared `phonix-sdk` crates, depended on by git tag
+in `Cargo.toml`. That repository is private for now, so a clone needs read
+access to it: locally through your git credentials, and in CI through the
+`SDK_READ_TOKEN` secret, a fine-grained token with read access to its contents
+and nothing else. `.github/workflows/ci.yml` builds and tests on Linux and
+Windows on every push, and a tag `v*` publishes both bundles as a release.
 
 ## Measurement tools
 
