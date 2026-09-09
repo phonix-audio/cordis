@@ -28,8 +28,6 @@ const KNOB_BIG: f32 = 48.0;
 const KEYBOARD_H: f32 = 156.0;
 
 pub struct CordisApp {
-    /// Lamp click pending: the plugin moves the host param, not us.
-    wants_hybrid: Option<bool>,
     /// A factory preset pick pending. Same rule as the lamp: the editor asks,
     /// the plugin moves the parameter, and the parameter is the only thing
     /// that reaches the engine and the chain.
@@ -61,7 +59,6 @@ impl CordisApp {
         let presets = factory_presets_tagged();
         let preset_names = presets.iter().map(|p| p.name.clone()).collect();
         Self {
-            wants_hybrid: None,
             wants_preset: None,
             tab: 0,
             fx_dirty: false,
@@ -274,13 +271,6 @@ impl CordisApp {
         }
     }
 
-    /// Consumed by the plugin's editor closure each frame: a lamp click asks
-    /// for the hybrid to be switched, and the plugin answers by moving the
-    /// host parameter (see `draw_header` for why it is not sent directly).
-    pub fn take_wants_hybrid(&mut self) -> Option<bool> {
-        self.wants_hybrid.take()
-    }
-
     pub fn take_wants_preset(&mut self) -> Option<i32> {
         self.wants_preset.take()
     }
@@ -312,19 +302,8 @@ impl CordisApp {
             &self.patch.name,
             &self.preset_names,
             self.cached_meter.active_voices,
-            self.cached_meter.hybrid,
-            self.cached_meter.bank_fill,
             self.tab,
         );
-        if res.preview_toggled {
-            // NOT sent to the engine from here. The lamp used to send
-            // SetHybrid directly, which left the host's `hybrid` parameter
-            // behind — engine and parameter desynchronised until the next
-            // param touch. The request goes up to the plugin instead, which
-            // moves the PARAMETER through its ParamSetter; the param diff
-            // then reaches the engine, and there is exactly one writer.
-            self.wants_hybrid = Some(!self.cached_meter.hybrid);
-        }
         if let Some(i) = res.preset_selected {
             if let Some(p) = self.presets.get(i).cloned() {
                 // Shown here, but NOT sent from here. The plugin moves the

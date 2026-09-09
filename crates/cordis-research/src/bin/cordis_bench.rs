@@ -418,41 +418,4 @@ fn main() {
             k, audio / el, el*1000.0, live, all);
     }
 
-    // ── Hybrid: the same held notes, played back from cached samples ────────
-    // The point of the hybrid: once a note's sample is in the bank, holding it
-    // costs a buffer read, not a physical voice reading the 3618-mode board. The
-    // board advance is skipped entirely when no live voice sounds. This is the
-    // real-time comparison against the live model above, at the same polyphony.
-    println!("\n-- hybrid (cached-sample playback) --");
-    for &k in &[8usize, 16, 31] {
-        let (mut eng, tx, _mr) = CordisEngine::new_for_plugin(sr);
-        eng.set_hybrid(true);
-        let notes: Vec<u8> = (0..k).map(|i| 48 + (i as u8) * 2).collect();
-        // Prewarm the bank on the audio-free path (this is the one-time cost the
-        // background filler pays live, off the audio thread).
-        let tw = Instant::now();
-        for &nn in &notes {
-            eng.prewarm(nn, 90);
-        }
-        let prewarm = tw.elapsed().as_secs_f64();
-        for &nn in &notes {
-            tx.send(CordisCommand::NoteOn(nn, 90)).ok();
-        }
-        let block = 128usize;
-        let mut buf = vec![0.0f32; block * 2];
-        for _ in 0..(sr as usize / block) {
-            eng.process_audio(&mut buf, 2);
-        }
-        let blocks = (sr as f64 * secs) as usize / block;
-        let t = Instant::now();
-        for _ in 0..blocks {
-            eng.process_audio(&mut buf, 2);
-        }
-        let el = t.elapsed().as_secs_f64();
-        let audio = (blocks * block) as f64 / sr as f64;
-        println!(
-            "hybrid {:2} voices: {:.2}x realtime ({:.0} ms dsp)  (bank {} notes, prewarm {:.1}s one-time)",
-            k, audio / el, el * 1000.0, eng.bank_len(), prewarm
-        );
-    }
 }

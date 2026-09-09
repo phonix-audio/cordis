@@ -17,8 +17,6 @@ pub struct HeaderResult {
     pub preset_selected: Option<usize>,
     pub save_clicked: bool,
     pub load_clicked: bool,
-    /// The preview lamp was clicked; the caller flips the engine's hybrid mode.
-    pub preview_toggled: bool,
     /// A page was picked in the fascia switch: 0 the instrument, 1 the
     /// effects.
     pub tab_selected: Option<u8>,
@@ -32,8 +30,6 @@ pub fn draw(
     preset_name: &str,
     preset_names: &[String],
     voices: u8,
-    preview_on: bool,
-    bank_fill: (u16, u16),
     tab: u8,
 ) -> HeaderResult {
     let mut out = HeaderResult::default();
@@ -154,7 +150,7 @@ pub fn draw(
         x += w + 8.0;
     }
 
-    // ── Right tail: voices, then the preview lamp ────────────────────
+    // ── Right tail: voices ───────────────────────────────────────────
     ui.painter().text(
         Pos2::new(rect.right() - 16.0, mid),
         Align2::RIGHT_CENTER,
@@ -163,29 +159,6 @@ pub fn draw(
         TEXT_DIM,
     );
 
-    let lamp_c = Pos2::new(rect.right() - 170.0, mid);
-    theme::lamp(ui, lamp_c, 4.0, preview_on, GOLD_BRIGHT);
-    // The label is the bank's own state: preparing, ready, or off. The whole
-    // keyboard is rendered before the mode is worth its name, and the count
-    // is the honest thing to show while that happens.
-    let label = if !preview_on {
-        "PREVIEW".to_string()
-    } else if bank_fill.0 < bank_fill.1 {
-        format!("PREP {}/{}", bank_fill.0, bank_fill.1)
-    } else {
-        "HYBRID".to_string()
-    };
-    ui.painter().text(
-        lamp_c + Vec2::new(10.0, 0.0),
-        Align2::LEFT_CENTER,
-        label,
-        FontId::proportional(9.0),
-        if preview_on { TEXT_PRIMARY } else { TEXT_DIM },
-    );
-    let lamp_hit = Rect::from_center_size(lamp_c + Vec2::new(24.0, 0.0), Vec2::new(80.0, 18.0));
-    if ui.interact(lamp_hit, ui.id().with("preview"), Sense::click()).clicked() {
-        out.preview_toggled = true;
-    }
 
     out
 }
@@ -255,7 +228,7 @@ mod tests {
                     .frame(egui::Frame::NONE)
                     .show(ctx, |ui| {
                         let r = ui.max_rect();
-                        draw(ui, r, &names[0], &names, 0, false, (0, 0), 0);
+                        draw(ui, r, &names[0], &names, 0, 0);
                     });
             })
     }

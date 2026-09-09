@@ -231,25 +231,6 @@ marked as such in the source, at the constant.
   removing it changed the decay curve almost not at all and pushed the top note
   out of range, so it is back until the real cause is found.
 
-## Hybrid Preview is a sampler
-
-The instrument plays the exact model by default. `Hybrid Preview` is a separate
-mode, off by default, and it is not the physics: it renders each note once, at
-four velocity layers, and replays it.
-
-What it cannot do is reproduce a hammer meeting a string that is already moving,
-which is why repeated notes click. The clicks are patched with a cross-fade and
-an attack ramp, which is cosmetics rather than physics. Beyond that: velocity is
-a staircase of four layers (eight was measured *worse*, 27 high-band artefacts
-over a minute against 5, 2026-08-21); a note held or pedalled past the end of
-its rendered sample simply stops, which is a note vanishing; a cached note
-bypasses the soundboard entirely; the released note falls at a flat rate where
-the model loses 17.7 / 22.1 / 8.0 dB in three bands, so the hybrid's release
-differs from the model's by five to eight decibels somewhere in the spectrum
-(shaping it into three bands to match was tried on 2026-08-21 and made the high
-band twice as bad). Preparing a bank costs about 2.8 seconds per note on an idle
-machine, once per parameter set.
-
 ## Sympathetic resonance is one shared bank, not 87 strings
 
 With the pedal down a real piano wakes every other set of strings. Simulating

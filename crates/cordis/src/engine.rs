@@ -24,13 +24,8 @@ use std::sync::mpsc;
 
 use crate::state_buffer::{meter_channel, SharedReader, Writer};
 
-use std::collections::HashSet;
 
 use super::hammer::hammer_speed;
-use super::hybrid::{
-    layer_vel, render_note_stereo, spawn_bank_filler, RenderBudget, RenderDone, RenderRequest,
-    SampleBank, SamplePlayer, HYBRID_PLAYERS,
-};
 use super::patch::CordisPatch;
 use super::mechanics::Mechanics;
 use super::soundboard::Soundboard;
@@ -160,16 +155,6 @@ pub enum CordisCommand {
     SetGain(f32),
     LoadPatch(Box<CordisPatch>),
     ProgramChange(u8),
-    /// Turn the sample cache on or off, and cap how long a cached note may be.
-    ///
-    /// One command rather than two because the order matters: the filler thread
-    /// copies the budget when it spawns, so the cap has to be in place before
-    /// the cache is switched on.
-    ///
-    /// This is a PREVIEW mode. A cached note cannot reproduce a hammer meeting a
-    /// string that is already moving, and those restrikes click on repeated
-    /// notes, which is why the instrument plays the exact model by default.
-    SetHybrid { on: bool, max_hold_secs: f32 },
 }
 
 #[derive(Clone, Default)]
@@ -187,12 +172,6 @@ pub struct CordisMeterState {
     pub active_notes: Vec<u8>,
     /// The sustain pedal, so the dampers can be seen to lift.
     pub pedal_down: bool,
-    /// Whether the engine is in hybrid preview. The engine's own truth, not the
-    /// host parameter's.
-    pub hybrid: bool,
-    /// Bank preparation: (entries ready, entries wanted). Wanted is the whole
-    /// keyboard x layers once the hybrid is on; (352, 352) = ready to play.
-    pub bank_fill: (u16, u16),
 }
 
 pub struct CordisEngine {
@@ -230,11 +209,6 @@ pub struct CordisEngine {
     /// fortissimo blow peaks a few dB below full scale, which leaves the pp-to-ff
     /// range the model produces on its own (about 32 dB) where it lands.
     out_gain: f32,
-    /// Hybrid playback. When on, a struck note whose sample is already in the
-    /// bank plays back as a buffer (cheap) instead of a live physical voice; a
-    /// miss falls back to the live model. Off by default, so the plain engine is
-    /// unchanged.
-    hybrid: bool,
     /// Bumped once per command batch, and stamped on every voice the hammer
     /// strikes, so `note_off` can tell a note that just went down from one that
     /// has been sounding. See the comment there.
@@ -242,8 +216,6 @@ pub struct CordisEngine {
     /// Restrike handling (tunable while chasing the repeated-note click): how long
     /// the old player cross-fades out, and how long the new one ramps its attack
     /// in, in milliseconds.
-    restrike_xf_ms: f32,
-    restrike_atk_ms: f32,
     felt_scale: f64,
     /// Diagnostic: emit the bridge force instead of the radiated sound.
     bridge_tap: bool,
@@ -282,9 +254,6 @@ pub struct CordisEngine {
     budget_pinned: bool,
     /// Whether THIS engine is currently counted in `ACTIVE_PIANOS`.
     counted_active: bool,
-    /// Where persisted banks live (None = no persistence). See
-    /// `set_bank_cache_root`.
-    bank_cache_root: Option<std::path::PathBuf>,
     /// Divide the machine between sounding instances (see `worker_cap_for`).
     /// On in service; the ensemble bench turns it off to measure the old,
     /// every-instance-for-itself behaviour.
@@ -323,30 +292,9 @@ pub struct CordisEngine {
     /// afterwards if the tuning of the unisons changes.
     protos: Vec<Option<Voice>>,
     protos_detune: f32,
-    /// Time constant of the sample players' damper, ms (diagnostic knob).
-    damper_ms: f32,
-    /// Diagnostic trace of what the sample path did at each note-on.
-    hybrid_trace: Vec<(u64, u8, u8, u8, bool, bool, usize)>,
-    hybrid_trace_on: bool,
-    /// Samples produced so far, so a trace entry can be placed in time.
-    frames_done: u64,
-    bank: SampleBank,
-    players: Vec<SamplePlayer>,
-    budget: RenderBudget,
-    /// Background bank filler: requests go out on the first strike of a note we
-    /// have no sample for, and finished samples come back to be inserted here on
-    /// the audio thread. `render_pending` stops the same note being requested
-    /// twice while its render is in flight.
-    render_req_tx: Option<mpsc::Sender<RenderRequest>>,
-    render_done_rx: Option<mpsc::Receiver<RenderDone>>,
-    filler: Option<std::thread::JoinHandle<()>>,
-    render_pending: HashSet<(u8, u8)>,
-    /// Bumped whenever the model or a timbre-affecting patch parameter changes.
-    /// Cached samples and in-flight renders from an earlier generation are dropped.
-    bank_gen: u64,
     /// The shared sympathetic halo under the pedal, in place of the per-string
-    /// sympathetic voices the model spawns (which the hybrid cannot afford).
-    sympath: super::hybrid::SympatheticBank,
+    /// sympathetic voices the model would otherwise spawn.
+    sympath: super::sympathy::SympatheticBank,
 }
 
 /// A sounding engine that is dropped (a track removed mid-note, a plugin
@@ -395,17 +343,9 @@ impl CordisEngine {
             patch_dirty: true,
             pc_bank: super::patch::factory_presets(),
             out_gain: 40.0,
-            hybrid: false,
-            restrike_xf_ms: 30.0,
-            restrike_atk_ms: 4.0,
             felt_scale: 1.0,
             bridge_tap: false,
             last_bridge_force: 0.0,
-            damper_ms: 80.0,
-            hybrid_trace: Vec::new(),
-            hybrid_trace_on: false,
-            frames_done: 0,
-            bank: SampleBank::new(),
             sheds: 0,
             load_peak: 0.0,
             hot: 0,
@@ -416,7 +356,6 @@ impl CordisEngine {
             voice_budget: MAX_VOICES,
             budget_pinned: false,
             counted_active: false,
-            bank_cache_root: None,
             instance_cap: true,
             retire_rel: crate::voice::RETIRE_REL,
             pool: None,
@@ -429,14 +368,7 @@ impl CordisEngine {
             pool_shapes: Vec::with_capacity(MAX_VOICES),
             protos: Vec::new(),
             protos_detune: f32::NAN,
-            players: (0..HYBRID_PLAYERS).map(|_| SamplePlayer::default()).collect(),
-            budget: RenderBudget::default(),
-            render_req_tx: None,
-            render_done_rx: None,
-            filler: None,
-            render_pending: HashSet::new(),
-            bank_gen: 0,
-            sympath: super::hybrid::SympatheticBank::new(sr),
+            sympath: super::sympathy::SympatheticBank::new(sr),
         };
         eng.shape_the_halo();
         // Build every note's banks now, where being slow is free. Left until
@@ -444,44 +376,6 @@ impl CordisEngine {
         // inside one audio callback.
         eng.warm_protos();
         eng
-    }
-
-    /// The timbre-affecting patch parameters. A change to any of them means the
-    /// cached samples were rendered by a different piano and must go. Gain and
-    /// release noise are excluded: gain is applied live to the players, and the
-    /// release noise is not part of the struck sample.
-    fn sample_sig(&self) -> [f32; 5] {
-        // `mechanics` is deliberately NOT in the signature: every render bakes
-        // it at zero (the action is fired live per event precisely so it keeps
-        // its randomisation), so a mechanics change cannot make a cached
-        // sample stale — including it only wiped a valid bank for nothing.
-        super::hybrid::timbre_sig(&self.patch)
-    }
-
-    /// Where persisted banks live. Set by the host/plugin once at load; the
-    /// audio thread never touches the disk — the path is handed to the filler
-    /// thread at spawn.
-    pub fn set_bank_cache_root(&mut self, root: std::path::PathBuf) {
-        self.bank_cache_root = Some(root);
-        // A filler spawned before the root arrived would never persist:
-        // respawn it with the root on the next enable.
-        if self.filler.is_some() {
-            self.render_req_tx = None;
-            self.render_done_rx = None;
-            self.filler = None;
-            if self.hybrid {
-                self.set_hybrid(true);
-            }
-        }
-    }
-
-    /// Drop the bank and any in-flight renders: they belong to a piano that no
-    /// longer exists. Bumping the generation makes stale renders discard on
-    /// arrival.
-    fn invalidate_bank(&mut self) {
-        self.bank.clear();
-        self.render_pending.clear();
-        self.bank_gen = self.bank_gen.wrapping_add(1);
     }
 
     /// Let the engine shed voices when it cannot render them in time.
@@ -703,16 +597,6 @@ impl CordisEngine {
         self.pool = Some(crate::parallel::VoicePool::new(workers, MAX_VOICES));
     }
 
-    /// Turn hybrid playback on or off. Turning it on spawns the background bank
-    /// filler once; it renders note samples off the audio thread while the live
-    /// model covers each note's first strike.
-    /// Restrike cross-fade (old player fade-out) and attack-ramp (new player
-    /// fade-in) durations, in ms. Exposed for tuning the repeated-note click.
-    /// Sample-player damper time constant, ms. Diagnostic: the model's damper is
-    /// a felt that takes the highs first, the sample player's is a flat gain.
-    pub fn set_damper_ms(&mut self, ms: f32) {
-        self.damper_ms = ms.max(1.0);
-    }
 
     /// Multiply the felt's stiffness everywhere. Calibration handle: the felt
     /// was fitted against contact durations measured with the string held still,
@@ -729,200 +613,10 @@ impl CordisEngine {
         }
     }
 
-    pub fn set_restrike(&mut self, xf_ms: f32, atk_ms: f32) {
-        self.restrike_xf_ms = xf_ms.max(0.0);
-        self.restrike_atk_ms = atk_ms.max(0.0);
-    }
-
-    /// Cap on how long a cached note may be, in seconds.
-    ///
-    /// Takes effect for renders requested after it: the filler thread already
-    /// running keeps the budget it was given.
-    pub fn set_render_cap(&mut self, secs: f32) {
-        self.budget = self.budget.with_cap(secs);
-    }
-
-    pub fn set_hybrid(&mut self, on: bool) {
-        let was = self.hybrid;
-        self.hybrid = on;
-        if on && self.filler.is_none() {
-            let (rtx, rrx) = mpsc::channel::<RenderRequest>();
-            let (dtx, drx) = mpsc::channel::<RenderDone>();
-            self.filler = Some(spawn_bank_filler(
-                self.sample_rate,
-                self.budget,
-                self.bank_cache_root.clone(),
-                rrx,
-                dtx,
-            ));
-            self.render_req_tx = Some(rtx);
-            self.render_done_rx = Some(drx);
-        }
-        // Turning the hybrid on IS asking for the whole keyboard: the user's
-        // specification is that everything is ready before playing, so the
-        // preparation starts here, not at the first miss. Notes struck while
-        // it runs still play the full physical model (the correct sound, at
-        // the physical cost) and stop missing as their samples land.
-        if on && !was {
-            let gen = self.bank_gen;
-            let patch = self.patch.clone();
-            if let Some(tx) = &self.render_req_tx {
-                let _ = tx.send(super::hybrid::FillerJob::All(gen, patch));
-            }
-        }
-    }
-
-    /// Move any finished background renders into the bank. Runs on the audio
-    /// thread, but only inserts (rare, once per note); the rendering itself
-    /// happened on the filler thread.
-    fn drain_renders(&mut self) {
-        let mut done: Vec<RenderDone> = Vec::new();
-        if let Some(rx) = &self.render_done_rx {
-            while let Ok(msg) = rx.try_recv() {
-                done.push(msg);
-            }
-        }
-        for (gen, note, lv, sample) in done {
-            self.render_pending.remove(&(note, lv));
-            // A render from before an invalidation is for a piano that no longer
-            // exists; drop it.
-            if gen == self.bank_gen {
-                self.bank.insert(sample);
-            }
-        }
-    }
-
-    /// Ask the filler to render a note's layer, unless it is already cached or a
-    /// request is already in flight.
-    fn request_render(&mut self, note: u8, vel: u8) {
-        let key = (note, layer_vel(vel));
-        if self.bank.has(note, vel) || self.render_pending.contains(&key) {
-            return;
-        }
-        let gen = self.bank_gen;
-        let patch = self.patch.clone();
-        let sent = match &self.render_req_tx {
-            Some(tx) => tx
-                .send(super::hybrid::FillerJob::One(gen, key.0, key.1, patch))
-                .is_ok(),
-            None => false,
-        };
-        if sent {
-            self.render_pending.insert(key);
-        }
-    }
-
-    pub fn is_hybrid(&self) -> bool {
-        self.hybrid
-    }
 
     /// Set the sympathetic halo gain. Exposed for calibration against the model.
     pub fn set_sympath_gain(&mut self, g: f32) {
         self.sympath.set_gain(g);
-    }
-
-    /// Render a note's velocity layer into the bank ahead of time, OFF the audio
-    /// thread. This is what the background filler (and the tests and bench) call;
-    /// the audio thread only ever reads the bank, never renders into it.
-    pub fn prewarm(&mut self, note: u8, vel: u8) {
-        let sr = self.sample_rate;
-        let b = self.budget;
-        let p = self.patch.clone();
-        let _ = self.bank.get_or_render(sr, note, vel, b, &p);
-    }
-
-    /// Prewarm many notes at once, rendered in parallel across all cores. For an
-    /// OFFLINE bounce this is where the time goes, so doing it one core at a time
-    /// wastes the machine; parallelism is safe here because this is not the
-    /// real-time audio path.
-    pub fn prewarm_parallel(&mut self, notes: &[(u8, u8, f32)]) {
-        // Distinct (note, layer) pairs not already cached, each with the longest
-        // length cap seen for it (so a note held long somewhere is not cut).
-        let mut want: std::collections::HashMap<(u8, u8), f32> = std::collections::HashMap::new();
-        for &(n, v, cap) in notes {
-            if self.bank.has(n, v) {
-                continue;
-            }
-            let e = want.entry((n, layer_vel(v))).or_insert(0.0);
-            if cap > *e {
-                *e = cap;
-            }
-        }
-        if want.is_empty() {
-            return;
-        }
-        let jobs: Vec<(u8, u8, f32)> = want.into_iter().map(|((n, lv), c)| (n, lv, c)).collect();
-        let sr = self.sample_rate;
-        let base = self.budget;
-        let patch = self.patch.clone();
-        let nthreads = std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(4)
-            .min(jobs.len());
-        let chunk = jobs.len().div_ceil(nthreads);
-        let out: std::sync::Mutex<Vec<std::sync::Arc<super::hybrid::NoteSample>>> =
-            std::sync::Mutex::new(Vec::new());
-        std::thread::scope(|s| {
-            for part in jobs.chunks(chunk) {
-                let patch = &patch;
-                let out = &out;
-                s.spawn(move || {
-                    let mut local = Vec::with_capacity(part.len());
-                    for &(n, lv, cap) in part {
-                        let b = base.with_cap(cap);
-                        local.push(std::sync::Arc::new(render_note_stereo(sr, n, lv, b, patch)));
-                    }
-                    out.lock().unwrap().extend(local);
-                });
-            }
-        });
-        for sample in out.into_inner().unwrap() {
-            self.bank.insert(sample);
-        }
-    }
-
-    /// How many samples the bank holds.
-    /// Drain the hybrid note-on trace: one entry per note-on while the trace is
-    /// enabled, as `(sample_index, note, vel, layer_vel, served_from_bank,
-    /// was_restrike, players_active)`. Diagnostic only — it lets a click heard at
-    /// a given time be tied to exactly what the sample path did there.
-    pub fn take_hybrid_trace(&mut self) -> Vec<(u64, u8, u8, u8, bool, bool, usize)> {
-        std::mem::take(&mut self.hybrid_trace)
-    }
-
-    /// Turn the hybrid note-on trace on. Off by default and never allocated in
-    /// normal use.
-    pub fn trace_hybrid(&mut self, on: bool) {
-        self.hybrid_trace_on = on;
-    }
-
-    pub fn bank_len(&self) -> usize {
-        self.bank.len()
-    }
-
-    /// Start a sample voice, reusing a free slot or stealing the one furthest
-    /// into its own decay (the most spent). Samples are cheap, so the pool is
-    /// large and stealing is rare.
-    fn spawn_player(
-        &mut self,
-        sample: std::sync::Arc<super::hybrid::NoteSample>,
-        note: u8,
-        gain: f32,
-        attack_ms: f32,
-    ) {
-        let slot = self
-            .players
-            .iter()
-            .position(|p| !p.active)
-            .or_else(|| {
-                self.players
-                    .iter()
-                    .enumerate()
-                    .max_by(|a, b| a.1.progress().total_cmp(&b.1.progress()))
-                    .map(|(i, _)| i)
-            })
-            .unwrap_or(0);
-        self.players[slot].start(sample, note, gain, attack_ms, self.sample_rate);
     }
 
     pub fn new_for_plugin(
@@ -950,25 +644,10 @@ impl CordisEngine {
             self.sample_rate = sr;
             self.board = Soundboard::new(sr, self.patch.width as f64);
             self.mech.set_sample_rate(sr);
-            self.sympath = super::hybrid::SympatheticBank::new(sr);
+            self.sympath = super::sympathy::SympatheticBank::new(sr);
             self.shape_the_halo();
             for v in self.voices.iter_mut() {
                 *v = Voice::default();
-            }
-            // The bank's samples were rendered AT a sample rate; played back
-            // at another they are a pitch shifter, not a piano. This was
-            // missed until 2026-08-24: the bank survived a host rate change
-            // and every cached note came back at the wrong pitch and speed.
-            self.invalidate_bank();
-            // And the filler thread keeps the rate it was spawned with, so it
-            // would render every FUTURE request at the old rate too. Closing
-            // the request channel ends it (that is its exit condition); the
-            // next `set_hybrid(true)` respawns one at the current rate.
-            self.render_req_tx = None;
-            self.render_done_rx = None;
-            self.filler = None;
-            if self.hybrid {
-                self.set_hybrid(true);
             }
         }
     }
@@ -986,66 +665,6 @@ impl CordisEngine {
     fn note_on(&mut self, note: u8, vel: u8) {
         if !(21..=108).contains(&note) {
             return;
-        }
-        // ── Hybrid: play the cached sample if we have it ──────────────────
-        //
-        // The sample already carries the strike, the string, the board colour
-        // and the action noise at final level, so it plays back directly and
-        // never touches the soundboard. A miss falls through to the live model
-        // below: correct and immediate, and the repeat will find the sample.
-        if self.hybrid {
-            if self.hybrid_trace_on {
-                let hit = self.bank.has(note, vel);
-                let re = self.players.iter().any(|p| p.is_note(note));
-                let live = self.players.iter().filter(|p| p.active).count();
-                self.hybrid_trace.push((
-                    self.frames_done,
-                    note,
-                    vel,
-                    layer_vel(vel),
-                    hit,
-                    re,
-                    live,
-                ));
-            }
-            if let Some(sample) = self.bank.get(note, vel) {
-                let lv = layer_vel(vel);
-                let nvel = (vel as f64 / 127.0).clamp(0.0, 1.0);
-                let bvel = (lv as f64 / 127.0).clamp(0.0, 1.0);
-                let gain = (hammer_speed(nvel) / hammer_speed(bvel)) as f32;
-                // A restrike must not hard-reset the ringing player to the new
-                // sample's start. Cross-fade the ringing one out and begin the
-                // strike on a fresh slot: measured against the model, cutting it
-                // in under 6 ms leaves a hole of up to 12.8 dB where the model
-                // still has the old string's energy, and 30 ms brings that to
-                // 3 dB with the envelope inside 1-2 dB of the model throughout.
-                let sr = self.sample_rate;
-                let restrike = self.players.iter().any(|p| p.is_note(note));
-                let xf = self.restrike_xf_ms;
-                for p in self.players.iter_mut().filter(|p| p.is_note(note)) {
-                    p.crossfade_out(xf, sr);
-                }
-                let attack_ms = if restrike { self.restrike_atk_ms } else { 0.0 };
-                self.spawn_player(sample, note, gain, attack_ms);
-                // The mechanism is NOT in the sample (see `render_note_stereo`):
-                // it is a per-event stochastic thing, and a frozen copy of one
-                // realisation replayed at every strike adds coherently across
-                // notes struck together. Fire it live, exactly as the model path
-                // does, so it keeps its own delay and jitter.
-                self.mech.key_struck(note, nvel as f32);
-                // The damper only has to lift for a note that was NOT already
-                // sounding — on a restrike it is already off the string.
-                if !self.sustain && !restrike {
-                    self.mech.damper_lifted(note);
-                }
-                if !self.held.contains(&note) {
-                    self.held.push(note);
-                }
-                return;
-            }
-            // Miss: the live model covers this first strike while the sample
-            // renders in the background, so the next strike is a buffer read.
-            self.request_render(note, vel);
         }
         // Who gives up their slot, and it is never "whoever is first".
         //
@@ -1096,8 +715,8 @@ impl CordisEngine {
             if !self.held.contains(&note) {
                 self.held.push(note);
             }
-            // In hybrid mode the shared SympatheticBank provides the halo, so the
-            // per-string sympathetic voices (the polyphony wall) are not spawned.
+            // The shared SympatheticBank provides the halo, so the per-string
+            // sympathetic voices (the polyphony wall) are not spawned.
             if self.sustain && !self.shared_sympathy() {
                 self.wake_sympathetic(note);
             }
@@ -1296,18 +915,10 @@ impl CordisEngine {
                 v.release(sustain);
             }
         }
-        if self.hybrid {
-            let sr = self.sample_rate;
-            let ms = self.damper_ms;
-            for p in self.players.iter_mut().filter(|p| p.is_note(note)) {
-                p.release_ms(sustain, sr, ms);
-            }
-        }
     }
 
     fn drain_commands(&mut self) {
         self.strike_seq = self.strike_seq.wrapping_add(1);
-        let sig_before = self.sample_sig();
         while let Ok(cmd) = self.command_rx.try_recv() {
             match cmd {
                 CordisCommand::NoteOn(n, v) => {
@@ -1319,10 +930,6 @@ impl CordisEngine {
                     continue;
                 }
                 CordisCommand::NoteOff(n) => {
-                    if self.hybrid_trace_on {
-                        let live = self.players.iter().filter(|p| p.active).count();
-                        self.hybrid_trace.push((self.frames_done, n, 255, 1, false, false, live));
-                    }
                     self.note_off(n);
                     continue;
                 }
@@ -1334,20 +941,9 @@ impl CordisEngine {
                     for v in self.voices.iter_mut() {
                         v.release(false);
                     }
-                    let sr = self.sample_rate;
-                    for p in self.players.iter_mut() {
-                        p.release(false, sr);
-                    }
                     continue;
                 }
                 CordisCommand::SustainPedal(down) => {
-                    if self.hybrid_trace_on && down != self.sustain {
-                        let live = self.players.iter().filter(|p| p.active).count();
-                        self.hybrid_trace.push((
-                            self.frames_done, 0, 255,
-                            if down { 2 } else { 3 }, false, false, live,
-                        ));
-                    }
                     if down != self.sustain {
                         self.mech.pedal(down);
                     }
@@ -1379,10 +975,6 @@ impl CordisEngine {
                             .filter(|v| v.active && v.note <= LAST_DAMPED)
                         {
                             v.pedal_up(held.contains(&v.note));
-                        }
-                        let sr = self.sample_rate;
-                        for p in self.players.iter_mut().filter(|p| p.active) {
-                            p.pedal_up(held.contains(&p.note), sr);
                         }
                     }
                     continue;
@@ -1431,17 +1023,8 @@ impl CordisEngine {
                         self.place_listeners();
                     }
                 }
-                CordisCommand::SetHybrid { on, max_hold_secs } => {
-                    // Cap first: the filler copies the budget when it spawns.
-                    self.set_render_cap(max_hold_secs);
-                    self.set_hybrid(on);
-                }
             }
             self.patch_dirty = true;
-        }
-        // A timbre-affecting change means the bank no longer matches the piano.
-        if self.hybrid && self.sample_sig() != sig_before {
-            self.invalidate_bank();
         }
     }
 
@@ -1453,11 +1036,7 @@ impl CordisEngine {
         };
         crate::denormal::enable_flush_to_zero();
         self.drain_commands();
-        self.drain_renders();
         let frames = output.len() / channels.max(1);
-        // Commands (note-ons) were drained above, so they carry this block's start
-        // frame; advance the clock after them.
-        self.frames_done += frames as u64;
         let gain = self.patch.gain * self.out_gain;
 
         // Make the pool on the first block of all, silence included: spawning
@@ -1470,10 +1049,8 @@ impl CordisEngine {
             self.pool = Some(crate::parallel::VoicePool::new(w, MAX_VOICES));
         }
 
-        // The live physical side (strings, board, action) and the sample side
-        // are gated separately: when nothing physical is sounding, the whole
-        // 3618-mode board advance is skipped and the sample voices play on their
-        // own for almost nothing. That is the point of the hybrid.
+        // When nothing physical is sounding, the whole 3618-mode board advance
+        // is skipped.
         let live_active = self.voices.iter().any(|v| v.active)
             || self.board.energy() > 1e-24
             // The shared halo outlives the strings that woke it: without this
@@ -1481,14 +1058,9 @@ impl CordisEngine {
             // string retires, and cuts the resonance off mid-air.
             || (self.shared_sympathy() && self.sympath.is_active());
         // The mechanism is gated on its OWN: it is noise bursts and three fixed
-        // resonators, and it needs neither the strings nor the plate. Folding it
-        // into `live_active` would wake the whole 3618-mode board advance for
-        // every sampled note-on in hybrid mode, which is exactly the cost the
-        // hybrid exists to avoid.
+        // resonators, and it needs neither the strings nor the plate.
         let mech_active = self.mech.is_sounding();
-        let hybrid_active = self.hybrid
-            && (self.players.iter().any(|p| p.active) || self.sympath.is_active());
-        if !live_active && !hybrid_active && !mech_active {
+        if !live_active && !mech_active {
             output[..frames * channels].fill(0.0);
             self.tick_meter(frames);
             return;
@@ -1845,38 +1417,12 @@ impl CordisEngine {
                 r += mr * trim;
             }
 
-            // Sample voices are summed straight in. Each already carries its own
-            // strike, string, board colour and action noise at output level, so
-            // it bypasses the board (driving it would double the colour). The
-            // patch.gain factor tracks a live trim the baked samples cannot.
-            if self.hybrid && self.hybrid_trace_on {
-                for i in 0..self.players.len() {
-                    if self.players[i].exhausted {
-                        self.players[i].exhausted = false;
-                        let note = self.players[i].note;
-                        self.hybrid_trace.push((self.frames_done, note, 255, 4, false, false, 0));
-                    }
-                }
-            }
-            if self.hybrid {
-                let mut pl = 0.0f32;
-                let mut pr = 0.0f32;
-                for p in self.players.iter_mut() {
-                    let (a, b) = p.tick();
-                    pl += a;
-                    pr += b;
-                }
-                l += pl * self.patch.gain;
-                r += pr * self.patch.gain;
-            }
             // ── The sympathetic halo ──────────────────────────────────────
             //
-            // Driven by everything already struck — the plate, the mechanism,
-            // and the sampled voices alike — and gated on the sustain pedal.
-            // It used to run only in the sample-cache preview; it now stands in
-            // for the eighty-seven physical strings the pedal used to wake,
-            // wherever `shared_sympathy` is on. `l` and `r` are re-zeroed every
-            // sample, so the halo never drives itself.
+            // Driven by everything already struck — the plate and the mechanism
+            // — and gated on the sustain pedal. It stands in for the eighty-seven
+            // physical strings the pedal would otherwise wake. `l` and `r` are
+            // re-zeroed every sample, so the halo never drives itself.
             if self.shared_sympathy() {
                 let drive = (l + r) * 0.5;
                 let halo = self.sympath.process(drive, self.sustain);
@@ -2004,25 +1550,10 @@ impl CordisEngine {
         // and a key lit that long is a key that lies. Sympathetic voices are
         // excluded for the same reason: nobody is holding them.
         self.meter_shadow.active_notes.clear();
-        if self.hybrid {
-            for p in self.players.iter().filter(|p| p.undamped()) {
-                self.meter_shadow.active_notes.push(p.note);
-            }
-        } else {
-            for v in self.voices.iter().filter(|v| v.active && v.undamped && !v.sympathetic) {
-                self.meter_shadow.active_notes.push(v.note);
-            }
+        for v in self.voices.iter().filter(|v| v.active && v.undamped && !v.sympathetic) {
+            self.meter_shadow.active_notes.push(v.note);
         }
         self.meter_shadow.pedal_down = self.sustain;
-        self.meter_shadow.hybrid = self.hybrid;
-        self.meter_shadow.bank_fill = (
-            self.bank.len() as u16,
-            if self.hybrid {
-                (88 * super::hybrid::VEL_LAYERS.len()) as u16
-            } else {
-                0
-            },
-        );
 
         if self.patch_dirty || self.meter_shadow.patch_snapshot.is_none() {
             self.meter_shadow.patch_snapshot = Some(self.patch.clone());
@@ -2383,7 +1914,6 @@ mod tests {
             "sympathetic strings were reported as played notes: {:?}",
             m.active_notes
         );
-        assert!(!m.hybrid, "the engine is on the model, not the preview");
 
         // The pedal holds the note after the key comes up, and the picture has
         // to agree with what is audible.

@@ -28,7 +28,7 @@ mod chord_attack;
 #[cfg(test)]
 mod sympathy_ab;
 pub mod piano_tables;
-pub mod hybrid;
+pub mod sympathy;
 
 /// Lock-free single-writer triple buffer for the engine-to-editor meter path.
 /// Kept local rather than shared: it is 216 lines of `std`, and a shared

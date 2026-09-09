@@ -27,8 +27,7 @@ and the first line is what one hears.
 | a chord's first block | nine treble notes struck in one block cost it 2.2 ms against 1.3: the contact's sub-step solve |
 
 Deliberate, and staying: sympathetic resonance is one shared bank rather than
-87 strings, `Hybrid Preview` is a sampler and not the physics, and a live pass
-is not the same render as an offline bounce.
+87 strings, and a live pass is not the same render as an offline bounce.
 
 `LIMITATIONS.md` carries all of it with the measurements and the dates they
 were taken, plus what was built and left switched off and which constants were

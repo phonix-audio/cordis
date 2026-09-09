@@ -31,7 +31,6 @@ pub struct CordisPlugin {
     presets: Vec<CordisPatch>,
     last_preset: i32,
     last_knobs: Option<[f32; KNOBS]>,
-    last_hybrid: Option<(bool, f32)>,
     /// The curated master chain. `None` until `initialize` knows the sample
     /// rate, and EMPTY until a factory preset is explicitly loaded: a project
     /// saved before this existed drives it through no code path that fills it,
@@ -60,7 +59,7 @@ impl Default for CordisPlugin {
         Self {
             params: Arc::new(CordisParams::new(presets.len(), Arc::new(names))),
             engine: None, tx, meter: Some(mr), pending: Some((rx, mw)),
-            buf: Vec::new(), presets, last_preset: 0, last_knobs: None, last_hybrid: None,
+            buf: Vec::new(), presets, last_preset: 0, last_knobs: None,
             fx_chain: None,
             fx_live: Arc::new(RwLock::new(FxChainSpec::default())),
             fx_rev: Arc::new(AtomicU64::new(0)), fx_seen: 0,
@@ -83,12 +82,6 @@ struct CordisParams {
     #[id = "release"] release: FloatParam,
     #[id = "tune"] tune: FloatParam,
     #[id = "gain"] gain: FloatParam,
-    // The sample-cache preview. Added after the split, because the host used to
-    // switch it on through an engine method that no longer crosses the
-    // boundary. Appended, so a project saved before they existed simply has no
-    // key for them and keeps the defaults.
-    #[id = "hybrid"] hybrid: BoolParam,
-    #[id = "maxhold"] max_hold: FloatParam,
 }
 
 impl CordisParams {
@@ -114,9 +107,6 @@ impl CordisParams {
             release: FloatParam::new("Release", 0.5, FloatRange::Linear { min: 0.0, max: 1.0 }),
             tune: FloatParam::new("Tune", 0.0, FloatRange::Linear { min: -50.0, max: 50.0 }).with_unit(" cents"),
             gain: FloatParam::new("Gain", 0.9, FloatRange::Linear { min: 0.0, max: 2.0 }),
-            hybrid: BoolParam::new("Hybrid Preview", false),
-            max_hold: FloatParam::new("Max Hold", 6.0, FloatRange::Linear { min: 1.0, max: 20.0 })
-                .with_unit(" s"),
         }
     }
     fn knob_sig(&self) -> [f32; KNOBS] {
@@ -130,14 +120,6 @@ impl Default for CordisParams {
     fn default() -> Self { Self::new(0, Arc::new(vec!["Init".to_string()])) }
 }
 
-/// `$XDG_CACHE_HOME/phonix-audio/cordis-banks`, or
-/// `~/.cache/phonix-audio/cordis-banks`.
-fn bank_cache_root() -> Option<std::path::PathBuf> {
-    let base = std::env::var_os("XDG_CACHE_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".cache")))?;
-    Some(base.join("phonix-audio").join("cordis-banks"))
-}
 
 fn gen_vstpresets(presets: &[CordisPatch]) {
     // Not a second literal: the `.vstpreset` header MUST carry the same class id
@@ -209,15 +191,8 @@ impl Plugin for CordisPlugin {
                     }
                 }
                 app.draw_ui(&ctx);
-                // The lamp's request goes through the HOST PARAMETER, so the
-                // parameter, the engine and the lamp can never disagree (the
-                // lamp used to command the engine directly and leave the
-                // parameter behind).
-                if let Some(on) = app.take_wants_hybrid() {
-                    setter.begin_set_parameter(&host_params.hybrid);
-                    setter.set_parameter(&host_params.hybrid, on);
-                    setter.end_set_parameter(&host_params.hybrid);
-                }
+                // Every request goes through the HOST PARAMETER, so the
+                // parameter, the engine and the window can never disagree.
                 // The page moved something. Publish it, THEN raise the
                 // counter: the audio thread reads the value only because the
                 // number changed, so the number must be the last thing to.
@@ -258,13 +233,6 @@ impl Plugin for CordisPlugin {
                 // initialize() is off the audio thread, where rebuilding the
                 // 88 prototypes is free.
                 eng.set_decoupled(cfg.process_mode == ProcessMode::Realtime);
-                // Where persisted hybrid banks live: rendered once per timbre,
-                // then every session opens them as file reads. Env access is
-                // fine HERE (plugin init, not DSP); the engine only carries
-                // the path to its filler thread.
-                if let Some(root) = bank_cache_root() {
-                    eng.set_bank_cache_root(root);
-                }
                 self.engine = Some(eng);
                 // Writing the factory bank is a first-run side effect, not
                 // something a state restore should redo.
@@ -307,7 +275,6 @@ impl Plugin for CordisPlugin {
         // the restored parameter values reach the engine even if the patch blob
         // was absent.
         self.last_knobs = None;
-        self.last_hybrid = None;
         true
     }
 
@@ -362,16 +329,6 @@ impl Plugin for CordisPlugin {
                 self.fx_seen = rev;
             }
         }
-        // The cache is a PREVIEW: each note is rendered once and replayed, which
-        // is far cheaper but cannot reproduce a hammer meeting a string that is
-        // already moving. Off by default, so what the instrument plays is the
-        // exact model.
-        let hyb = (self.params.hybrid.value(), self.params.max_hold.value());
-        if self.last_hybrid != Some(hyb) {
-            self.last_hybrid = Some(hyb);
-            let _ = tx.send(CordisCommand::SetHybrid { on: hyb.0, max_hold_secs: hyb.1 });
-        }
-
         let sig = self.params.knob_sig();
         let changed = self.last_knobs.map_or(true, |p| p.iter().zip(&sig).any(|(a, b)| (a - b).abs() > 1e-6));
         if changed {

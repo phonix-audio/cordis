@@ -36,7 +36,6 @@ Test: `cordis-plugin`, `frozen_identifiers`.
 
     persist   patch  editor-state
     params    preset voicing unison width damper action release tune gain
-              hybrid maxhold
 
 Three of the ids deliberately differ from what they drive: `unison` sets
 `unison_detune`, `action` sets `mechanics`, and `width` is labelled "Spread" in
@@ -45,9 +44,12 @@ the editor. They are frozen as they are.
 These strings are JSON keys inside every saved project's plugin state and inside
 every generated `.vstpreset`.
 
-`hybrid` and `maxhold` are appended, and appending is safe: a project with no
-key for them simply has none, and nice-plug's restore only visits the keys it
-finds. Adding is always allowed; renaming and reordering are not.
+Adding is always allowed; renaming and reordering are not. Two ids were
+REMOVED, `hybrid` and `maxhold`, with the sample-cache preview they drove: a
+project that stored them restores with those two keys skipped (nice-plug
+logs an unknown id and moves on) and everything else intact. Neither id may
+be reused for something new, or such a project would restore a stale value
+into it.
 
 ## The patch's serde shape
 
