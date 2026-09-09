@@ -244,6 +244,25 @@ mod tests {
         assert!(diff > 1e-4, "engaged chain left the signal alone (max diff {diff})");
     }
 
+    /// The recipe at the rates a host runs it at: the limiter's lookahead
+    /// follows the rate, and the ceiling holds at each.
+    #[test]
+    fn the_chain_keeps_its_ceiling_and_lookahead_at_every_rate() {
+        for sr in [44_100.0_f32, 48_000.0, 96_000.0] {
+            let mut chain = Chain::new(sr, BLOCK);
+            assert!(apply(&mut chain, &concert_hall()).is_clean());
+            assert_eq!(chain.latency_samples(), ((sr * 0.005) as usize).max(16) - 1, "{sr} Hz");
+            let ceiling = 10.0_f32.powf(-0.3 / 20.0) * 1.02;
+            let n = sr as usize;
+            let f = 220.0 / sr;
+            let mut l: Vec<f32> = (0..n).map(|i| 0.99 * (i as f32 * f * std::f32::consts::TAU).sin()).collect();
+            let mut r = l.clone();
+            chain.process(&mut l, &mut r, &[], Transport::default(), Musical::default());
+            let peak = l.iter().chain(r.iter()).fold(0.0f32, |m, s| m.max(s.abs()));
+            assert!(peak <= ceiling, "{sr} Hz: peak {peak} above the ceiling {ceiling}");
+        }
+    }
+
     /// What the ceiling is there for: the three slots above it can add gain,
     /// and the worst case the dial allows must still not leave full scale.
     #[test]

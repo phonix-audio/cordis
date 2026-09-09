@@ -636,6 +636,9 @@ impl CordisEngine {
         (live, all)
     }
 
+    /// Re-rate the instrument in place: the board, the mechanics, the halo,
+    /// and every note's prototype, which is built for one rate. Off the
+    /// audio thread, like the construction it repeats.
     pub fn set_sample_rate(&mut self, sr: f32) {
         if (sr - self.sample_rate).abs() > 0.5 {
             self.sample_rate = sr;
@@ -645,6 +648,12 @@ impl CordisEngine {
             self.shape_the_halo();
             for v in self.voices.iter_mut() {
                 *v = Voice::default();
+            }
+            let warm = !self.protos.is_empty();
+            self.protos.clear();
+            self.protos_detune = f32::NAN;
+            if warm {
+                self.warm_protos();
             }
         }
     }
@@ -7347,5 +7356,93 @@ fn audit_the_nonlinearity_against_chaigne() {
             fmax / (2.0 * z0),
             eps / base
         );
+    }
+}
+
+/// The instrument at the rates a host runs it at, and across a change of rate.
+#[cfg(test)]
+mod sample_rates {
+    use super::*;
+
+    const RATES: [f32; 3] = [44_100.0, 48_000.0, 96_000.0];
+    const MIDDLE_C: f32 = 261.63;
+
+    fn rms(x: &[f32]) -> f32 {
+        (x.iter().map(|v| v * v).sum::<f32>() / x.len().max(1) as f32).sqrt()
+    }
+
+    fn db(a: f32, b: f32) -> f32 {
+        20.0 * (a / b).log10()
+    }
+
+    /// The strongest line between 200 and 340 Hz over one second: a bin is
+    /// one hertz wide, so the answer is the fundamental to the hertz.
+    fn fundamental_hz(x: &[f32], sr: f32) -> f32 {
+        use rustfft::{num_complex::Complex, FftPlanner};
+        let n = (sr as usize).min(x.len());
+        let mut buf: Vec<Complex<f32>> = x[..n].iter().map(|v| Complex::new(*v, 0.0)).collect();
+        FftPlanner::new().plan_fft_forward(n).process(&mut buf);
+        let hz = |bin: usize| bin as f32 * sr / n as f32;
+        let (lo, hi) = ((200.0 * n as f32 / sr) as usize, (340.0 * n as f32 / sr) as usize);
+        let best = (lo..hi).max_by(|a, b| buf[*a].norm().total_cmp(&buf[*b].norm())).unwrap();
+        hz(best)
+    }
+
+    fn render_after_rate_change(from: f32, to: f32, secs: f32) -> Vec<f32> {
+        let (mut eng, tx, _mr) = CordisEngine::new_for_plugin(from);
+        eng.set_sample_rate(to);
+        let _ = tx.send(CordisCommand::NoteOn(60, 100));
+        let total = (to * secs) as usize;
+        let mut out = Vec::with_capacity(total);
+        let mut buf = vec![0.0f32; 256 * 2];
+        while out.len() < total {
+            buf.iter_mut().for_each(|x| *x = 0.0);
+            eng.process_audio(&mut buf, 2);
+            for fr in buf.chunks(2) {
+                out.push((fr[0] + fr[1]) * 0.5);
+            }
+        }
+        out.truncate(total);
+        out
+    }
+
+    #[test]
+    fn middle_c_is_middle_c_at_every_rate() {
+        for sr in RATES {
+            let x = CordisEngine::render_note_for_analysis(sr, 60, 100, 1.0);
+            assert!(x.iter().all(|v| v.is_finite()), "{sr} Hz: non-finite output");
+            let f = fundamental_hz(&x, sr);
+            assert!((f - MIDDLE_C).abs() <= 3.0, "{sr} Hz: fundamental at {f} Hz");
+        }
+    }
+
+    /// The same note is as loud whatever the rate: a level that moved with
+    /// the rate would mean a filter or a gain that was never scaled.
+    #[test]
+    fn a_note_is_as_loud_at_every_rate() {
+        let at = |sr: f32| {
+            let x = CordisEngine::render_note_for_analysis(sr, 60, 100, 0.5);
+            rms(&x)
+        };
+        let reference = at(48_000.0);
+        for sr in RATES {
+            let d = db(at(sr), reference);
+            assert!(d.abs() <= 1.5, "{sr} Hz: {d:+.2} dB against 48 kHz");
+        }
+    }
+
+    /// A host that opens at one rate and moves to another gets the same
+    /// instrument as one that opened at the second rate.
+    #[test]
+    fn a_rate_change_in_place_matches_a_fresh_engine() {
+        for to in [44_100.0, 96_000.0] {
+            let moved = render_after_rate_change(48_000.0, to, 1.0);
+            let fresh = CordisEngine::render_note_for_analysis(to, 60, 100, 1.0);
+            assert!(moved.iter().all(|v| v.is_finite()), "{to} Hz: non-finite output after the change");
+            let d = db(rms(&moved[..(to * 0.5) as usize]), rms(&fresh[..(to * 0.5) as usize]));
+            assert!(d.abs() <= 1.0, "{to} Hz: {d:+.2} dB between moved and fresh");
+            let (fm, ff) = (fundamental_hz(&moved, to), fundamental_hz(&fresh, to));
+            assert!((fm - ff).abs() <= 2.0, "{to} Hz: {fm} Hz moved against {ff} Hz fresh");
+        }
     }
 }
