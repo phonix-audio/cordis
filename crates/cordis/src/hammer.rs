@@ -48,21 +48,6 @@
 /// around there through the middle of the compass.
 const U_REF: f64 = 5.0e-4;
 
-/// Force the felt develops at that compression, in newtons, per register. This
-/// is the honest way to state the felt's hardness: `K` and `p` cannot be set
-/// independently, because at the tenth-of-a-millimetre compressions a hammer
-/// actually reaches, moving `p` from 1.8 to 3.2 changes `u^p` by five orders of
-/// magnitude. Anchoring the force at a working compression and letting `K`
-/// follow is what keeps the two describing the same felt.
-fn felt_force_at_ref(note: f64) -> f64 {
-    let t = ((note - 21.0) / 87.0).clamp(0.0, 1.0);
-    // A bass hammer is large and yielding, a treble hammer small and hard. The
-    // measured stiffnesses on a Steinway D span 4e8 N/m^p at D#1 to 2.3e11 at G6
-    // — nearly three decades — but they are quoted against each note's own
-    // exponent, so they are anchored here at a working compression instead.
-    60.0 * (260.0f64 / 60.0).powf(t)
-}
-
 /// The felt's stiffness and exponent for a note, from the five measured hammers.
 ///
 /// `K` is interpolated geometrically and `p` linearly, so the measured notes are
@@ -198,22 +183,6 @@ fn felt_from_the_measurements(note: f64) -> (f64, f64) {
     (ANCHORS[5].1, ANCHORS[5].2)
 }
 
-/// Hammer mass in kg, from the set weighed on a Steinway D by Chabassier, Joly
-/// and Chaigne (JASA 134(1) 2013, Table III):
-///
-/// ```text
-///     D#1 12.00 g   C2 10.20   F3 9.00   C#5 7.90   G6 6.77
-/// ```
-///
-/// A hammer set does NOT halve across the compass. This ran 11.5 g down to 3.6,
-/// which made every treble hammer little more than half its real weight — and a
-/// hammer's mass is what sets how long it stays on the string and therefore the
-/// whole spectrum it leaves behind. Fitted through the five weighed notes: 12.4 g
-/// at A0 falling to 6.4 g at C8, a factor of two rather than a factor of three.
-pub(crate) fn hammer_mass_for(note: f64) -> f64 {
-    hammer_mass(note)
-}
-
 #[cfg(test)]
 pub(crate) static TOP_MASS_OVERRIDE: std::sync::atomic::AtomicU64 =
     std::sync::atomic::AtomicU64::new(f64::to_bits(3.50e-3));
@@ -279,43 +248,6 @@ fn felt_force(u: f64, k: f64, p: f64) -> f64 {
         k * u.powf(p)
     } else {
         0.0
-    }
-}
-
-/// Bilbao's DISCRETE GRADIENT of that potential (eq. 11b):
-///
-/// ```text
-///     f = [Φ(u_next) − Φ(u_prev)] / (u_next − u_prev)
-/// ```
-///
-/// This is not an approximation of `Φ'`; it is the thing that makes the scheme
-/// conserve energy EXACTLY. Multiply the update by the velocity and the potential
-/// terms telescope, so the discrete energy
-/// `(M/2)((uⁿ⁺¹−uⁿ)/h)² + ½(Φ(uⁿ⁺¹) + Φ(uⁿ))` is constant to the last bit. A
-/// centred difference of `Φ'` does not have that property and is what gained 5.4
-/// times the hammer's momentum when re-contacts were tried.
-///
-/// When the two arguments coincide the quotient is 0/0 and the limit is `Φ'` at
-/// the midpoint, which is what the branch gives.
-#[inline]
-fn discrete_gradient(a: f64, b: f64, k: f64, p: f64) -> f64 {
-    let d = a - b;
-    if d.abs() < 1.0e-14 {
-        felt_force(0.5 * (a + b), k, p)
-    } else {
-        (felt_potential(a, k, p) - felt_potential(b, k, p)) / d
-    }
-}
-
-/// Its derivative with respect to `u_next`, for Newton.
-#[inline]
-fn discrete_gradient_d(a: f64, b: f64, k: f64, p: f64) -> f64 {
-    let d = a - b;
-    if d.abs() < 1.0e-14 {
-        // d/da of the limit: half the curvature of the potential.
-        0.5 * p * k * (0.5 * (a + b)).max(0.0).powf(p - 1.0)
-    } else {
-        (felt_force(a, k, p) * d - (felt_potential(a, k, p) - felt_potential(b, k, p))) / (d * d)
     }
 }
 

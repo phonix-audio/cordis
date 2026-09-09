@@ -178,8 +178,6 @@ pub struct CordisEngine {
     pub patch: CordisPatch,
     sample_rate: f32,
     voices: Vec<Voice>,
-    /// Each voice's pull on the bridge, gathered before any of them is stepped.
-    pending: Vec<f64>,
     /// Control-rate coupling (compile-time, `COUPLE_K`, currently off): held board read per voice,
     /// a global refresh phase, and the accumulated drive across the window.
     coupling_hold: Vec<(f64, f64)>,
@@ -191,7 +189,6 @@ pub struct CordisEngine {
     mech: Mechanics,
     /// The bridge's displacement, carried one sample so the loop can be
     /// stepped without solving anything.
-    bridge_y: f64,
     /// Keys currently down, so the pedal knows what to keep ringing.
     held: Vec<u8>,
     sustain: bool,
@@ -323,7 +320,6 @@ impl CordisEngine {
             patch,
             sample_rate: sr,
             voices: vec![Voice::default(); MAX_VOICES],
-            pending: vec![0.0; MAX_VOICES],
             coupling_hold: vec![(0.0, 0.0); MAX_VOICES],
             coupling_phase: 0,
             coupling_drive_accum: vec![0.0; MAX_VOICES],
@@ -333,7 +329,6 @@ impl CordisEngine {
                 m.set_sample_rate(sr);
                 m
             },
-            bridge_y: 0.0,
             held: Vec::with_capacity(16),
             sustain: false,
             command_rx: rx,

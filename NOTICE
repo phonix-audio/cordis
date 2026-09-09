@@ -1,0 +1,24 @@
+Cordis
+Copyright (c) 2026 Phonix Audio
+Licensed under MIT or Apache-2.0, at your option (LICENSE-MIT, LICENSE-APACHE).
+
+This repository carries work by others under their own terms:
+
+  nice-plug (crates nice-plug, nice-plug-egui), the VST3 and CLAP wrapper.
+  Copyright (c) 2022-2024 Robbert van der Helm. ISC License.
+  https://codeberg.org/RustAudio/nice-plug
+  Its `vst3` feature reaches VST3 through vst3-sys, which is GPLv3; a built
+  .vst3 or .clap is therefore distributed under GPLv3 terms. See README.md,
+  "Licence".
+
+  Noto Serif Display (Regular), the editor's display face.
+  Copyright 2022 The Noto Project Authors. SIL Open Font License 1.1.
+  crates/cordis-ui/assets/NotoSerifDisplay-Regular.ttf, OFL.txt beside it.
+
+  The per-note coefficient tables in crates/cordis/src/piano_tables.rs are
+  ported from the faust-stk piano by Romain Michon, after the Synthesis
+  ToolKit (STK) piano by Perry R. Cook and Gary P. Scavone, under the STK
+  license.
+
+  The Phonix SDK under vendor/phonix-sdk is Phonix Audio's, MIT
+  (vendor/phonix-sdk/LICENSE-MIT).

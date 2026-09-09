@@ -32,7 +32,7 @@ fn angle(level: f32) -> f32 {
 pub fn draw(ui: &Ui, rect: Rect, l: f32, r: f32) {
     let p = ui.painter();
     p.rect_filled(rect, 3.0, BG_DARK);
-    p.rect_stroke(rect, 3.0, Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
+    p.rect_stroke(rect, 3.0, Stroke::new(1.0_f32, BORDER), egui::StrokeKind::Inside);
 
     // The dial is inscribed in the panel: the needle sweeps to `radius`, the
     // ticks sit just inside it and the legends inside those, so nothing the
@@ -48,7 +48,7 @@ pub fn draw(ui: &Ui, rect: Rect, l: f32, r: f32) {
         let col = if hot { FELT_RED } else { GOLD.gamma_multiply(0.6) };
         p.line_segment(
             [pivot + dir * (radius - 5.0), pivot + dir * radius],
-            Stroke::new(if hot { 2.0 } else { 1.0 }, col),
+            Stroke::new(if hot { 2.0_f32 } else { 1.0_f32 }, col),
         );
         p.text(
             pivot + dir * (radius - 14.0),
@@ -66,18 +66,18 @@ pub fn draw(ui: &Ui, rect: Rect, l: f32, r: f32) {
             pivot + Vec2::new(a.sin(), -a.cos()) * (radius - 1.5)
         })
         .collect();
-    p.add(Shape::line(hot, Stroke::new(2.0, FELT_RED.gamma_multiply(0.7))));
+    p.add(Shape::line(hot, Stroke::new(2.0_f32, FELT_RED.gamma_multiply(0.7))));
 
     for (level, col) in [(l, MIC_LEFT), (r, MIC_RIGHT)] {
         let a = angle(level);
         let tip = pivot + Vec2::new(a.sin(), -a.cos()) * (radius - 3.0);
         if level > 0.9 {
-            p.line_segment([pivot, tip], Stroke::new(3.0, col.gamma_multiply(0.3)));
+            p.line_segment([pivot, tip], Stroke::new(3.0_f32, col.gamma_multiply(0.3)));
         }
-        p.line_segment([pivot, tip], Stroke::new(1.5, col));
+        p.line_segment([pivot, tip], Stroke::new(1.5_f32, col));
     }
     p.circle_filled(pivot, 3.0, Color32::from_rgb(60, 52, 40));
-    p.circle_stroke(pivot, 3.0, Stroke::new(1.0, BORDER));
+    p.circle_stroke(pivot, 3.0, Stroke::new(1.0_f32, BORDER));
 }
 
 #[cfg(test)]

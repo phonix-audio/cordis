@@ -409,7 +409,7 @@ impl CordisApp {
         // soundboard, and two controls for one value would disagree.
         let plate = Rect::from_min_size(Pos2::new(r.left() + 4.0, y), Vec2::new(r.width() - 8.0, 26.0));
         ui.painter().rect_filled(plate, 3.0, BG_DARK);
-        ui.painter().rect_stroke(plate, 3.0, egui::Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
+        ui.painter().rect_stroke(plate, 3.0, egui::Stroke::new(1.0_f32, BORDER), egui::StrokeKind::Inside);
         engraved(
             ui,
             plate.center(),

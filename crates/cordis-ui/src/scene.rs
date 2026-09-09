@@ -106,10 +106,10 @@ fn case(ui: &Ui, r: Rect) {
     let outline = poly(r, &geom::case_outline());
     fill_polygon(ui, &outline, CASE_LACQUER, CASE_LACQUER);
     ui.painter()
-        .add(Shape::closed_line(outline, Stroke::new(2.0, CASE_EDGE)));
+        .add(Shape::closed_line(outline, Stroke::new(2.0_f32, CASE_EDGE)));
     ui.painter().add(Shape::closed_line(
         poly(r, &geom::case_inset(0.035)),
-        Stroke::new(1.5, CASE_INNER_RIM),
+        Stroke::new(1.5_f32, CASE_INNER_RIM),
     ));
 }
 
@@ -130,13 +130,13 @@ fn soundboard(ui: &mut Ui, r: Rect) {
         let Some((y2, y3)) = span_at_x(&pts, b.x) else { continue };
         let top = Pos2::new(a.x, y0.max(a.y).min(y1));
         let bot = Pos2::new(b.x, y3.min(b.y).max(y2));
-        ui.painter().line_segment([top, bot], Stroke::new(1.0, WOOD_GRAIN));
+        ui.painter().line_segment([top, bot], Stroke::new(1.0_f32, WOOD_GRAIN));
     }
 
     // A vignette inside the rim: the lid is open above this board, and the
     // light falls off towards the case. Three passes of the same contour, each
     // wider and fainter, is the cheapest honest way to get it.
-    for (i, (w, a)) in [(18.0, 34u8), (9.0, 40), (1.0, 90)].into_iter().enumerate() {
+    for (i, (w, a)) in [(18.0_f32, 34u8), (9.0_f32, 40), (1.0_f32, 90)].into_iter().enumerate() {
         let ring = poly(r, &geom::case_inset(0.07 + i as f32 * 0.004));
         ui.painter().add(Shape::closed_line(
             ring,
@@ -157,12 +157,12 @@ fn frame(ui: &mut Ui, r: Rect) {
     ui.painter().rect_filled(bed, 0.0, KEYBED);
     ui.painter().line_segment(
         [bed.left_top(), bed.right_top()],
-        Stroke::new(1.0, CASE_EDGE),
+        Stroke::new(1.0_f32, CASE_EDGE),
     );
     let block = Rect::from_min_max(at(r, (0.03, v0)), at(r, (0.97, v1)));
     gradient_v(ui, block, FRAME_DARK, FRAME_LIGHT);
     ui.painter()
-        .rect_stroke(block, 1.0, Stroke::new(1.0, CASE_EDGE), egui::StrokeKind::Inside);
+        .rect_stroke(block, 1.0, Stroke::new(1.0_f32, CASE_EDGE), egui::StrokeKind::Inside);
 
     for i in 0..30 {
         let u = 0.06 + i as f32 / 29.0 * 0.88;
@@ -186,11 +186,11 @@ fn frame(ui: &mut Ui, r: Rect) {
         ));
         ui.painter().line_segment(
             [p + n * 2.4, q + n * 1.5],
-            Stroke::new(1.2, FRAME_LIGHT),
+            Stroke::new(1.2_f32, FRAME_LIGHT),
         );
         ui.painter().line_segment(
             [p - n * 2.6, q - n * 1.7],
-            Stroke::new(1.0, Color32::from_rgba_unmultiplied(0, 0, 0, 110)),
+            Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 0, 0, 110)),
         );
     }
 }
@@ -198,11 +198,11 @@ fn frame(ui: &mut Ui, r: Rect) {
 fn bridges(ui: &Ui, r: Rect) {
     ui.painter().add(Shape::line(
         poly(r, &geom::long_bridge()),
-        Stroke::new(6.0, BRIDGE),
+        Stroke::new(6.0_f32, BRIDGE),
     ));
     let [a, b] = geom::bass_bridge();
     ui.painter()
-        .line_segment([at(r, a), at(r, b)], Stroke::new(7.0, BRIDGE_BASS));
+        .line_segment([at(r, a), at(r, b)], Stroke::new(7.0_f32, BRIDGE_BASS));
 }
 
 /// The string fan. Steel first, then the wound bass strings over the top of it,
@@ -225,7 +225,7 @@ fn strings(ui: &Ui, r: Rect, active: &[u8]) {
         let Some((y0, y1)) = span_at_x(&board, pb.x) else { continue };
         pb.y = pb.y.clamp(y0 + 2.0, y1 - 2.0);
         ui.painter()
-            .line_segment([pa, pb], Stroke::new(0.7, col.gamma_multiply(0.30)));
+            .line_segment([pa, pb], Stroke::new(0.7_f32, col.gamma_multiply(0.30)));
     }
 
     for n in (geom::BASS_TOP + 1)..=geom::HIGHEST {
@@ -262,7 +262,7 @@ fn dampers(ui: &Ui, r: Rect, pedal_down: bool) {
             .rect_filled(block, 1.0, DAMPER.gamma_multiply(alpha * 0.85));
         ui.painter().line_segment(
             [block.left_bottom(), block.right_bottom()],
-            Stroke::new(1.0, FELT_RED.gamma_multiply(alpha)),
+            Stroke::new(1.0_f32, FELT_RED.gamma_multiply(alpha)),
         );
     }
 }
@@ -278,14 +278,14 @@ fn microphones(ui: &mut Ui, r: Rect, st: &SceneState<'_>) -> Option<f32> {
     // symmetric about.
     ui.painter().add(Shape::dashed_line(
         &[lp, rp],
-        Stroke::new(1.0, GOLD.gamma_multiply(0.28)),
+        Stroke::new(1.0_f32, GOLD.gamma_multiply(0.28)),
         6.0,
         5.0,
     ));
     let mid = at(r, (geom::MIC_CENTRE_U, geom::MIC_V));
     ui.painter().line_segment(
         [mid - Vec2::new(0.0, 4.0), mid + Vec2::new(0.0, 4.0)],
-        Stroke::new(1.0, GOLD.gamma_multiply(0.4)),
+        Stroke::new(1.0_f32, GOLD.gamma_multiply(0.4)),
     );
 
     let mut changed = None;
@@ -317,7 +317,7 @@ fn microphones(ui: &mut Ui, r: Rect, st: &SceneState<'_>) -> Option<f32> {
         }
         ui.painter().circle_filled(pos, 9.0, col);
         ui.painter()
-            .circle_stroke(pos, 9.0, Stroke::new(1.0, Color32::from_rgb(30, 28, 24)));
+            .circle_stroke(pos, 9.0, Stroke::new(1.0_f32, Color32::from_rgb(30, 28, 24)));
         ui.painter().circle_filled(
             pos - Vec2::splat(2.5),
             2.5,

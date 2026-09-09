@@ -39,7 +39,7 @@ pub fn draw(
     // A hairline under the whole strip, separating fascia from instrument.
     ui.painter().line_segment(
         [rect.left_bottom(), rect.right_bottom()],
-        Stroke::new(1.0, BORDER),
+        Stroke::new(1.0_f32, BORDER),
     );
 
     wordmark(ui, Pos2::new(rect.left() + 16.0, mid));
@@ -50,7 +50,7 @@ pub fn draw(
     ui.painter().rect_stroke(
         plate,
         4.0,
-        Stroke::new(1.0, Color32::from_rgb(90, 70, 36)),
+        Stroke::new(1.0_f32, Color32::from_rgb(90, 70, 36)),
         egui::StrokeKind::Inside,
     );
     engraved(
@@ -90,7 +90,7 @@ pub fn draw(
         .frame(
             egui::Frame::popup(ui.style())
                 .fill(BG_PANEL)
-                .stroke(Stroke::new(1.0, BORDER)),
+                .stroke(Stroke::new(1.0_f32, BORDER)),
         )
         .close_behavior(egui::PopupCloseBehavior::CloseOnClick)
         .show(|ui| {
@@ -119,7 +119,7 @@ pub fn draw(
         let resp = ui.interact(r, ui.id().with(label), Sense::click());
         let col = if resp.hovered() { GOLD_BRIGHT } else { GOLD.gamma_multiply(0.8) };
         ui.painter()
-            .rect_stroke(r, 2.0, Stroke::new(1.0, col.gamma_multiply(0.6)), egui::StrokeKind::Inside);
+            .rect_stroke(r, 2.0, Stroke::new(1.0_f32, col.gamma_multiply(0.6)), egui::StrokeKind::Inside);
         ui.painter()
             .text(r.center(), Align2::CENTER_CENTER, label, FontId::proportional(9.0), col);
         if resp.clicked() {
@@ -142,7 +142,7 @@ pub fn draw(
             ui.painter().rect_filled(r, 2.0, col.gamma_multiply(0.20));
         }
         ui.painter()
-            .rect_stroke(r, 2.0, Stroke::new(1.0, col.gamma_multiply(0.6)), egui::StrokeKind::Inside);
+            .rect_stroke(r, 2.0, Stroke::new(1.0_f32, col.gamma_multiply(0.6)), egui::StrokeKind::Inside);
         ui.painter()
             .text(r.center(), Align2::CENTER_CENTER, *label, FontId::proportional(9.0), col);
         if resp.clicked() {
@@ -180,7 +180,7 @@ fn wordmark(ui: &Ui, left: Pos2) {
             Pos2::new(left.x, left.y + 14.0),
             Pos2::new(left.x + w, left.y + 14.0),
         ],
-        Stroke::new(1.0, GOLD.gamma_multiply(0.45)),
+        Stroke::new(1.0_f32, GOLD.gamma_multiply(0.45)),
     );
 }
 

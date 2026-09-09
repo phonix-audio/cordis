@@ -41,26 +41,31 @@ struct SlotAccess<'a> {
 }
 
 impl SlotAccess<'_> {
-    fn param(&self, id: &str) -> &ParamSpec {
-        self.spec.param(id).unwrap_or_else(|| panic!("{} declares no {id}", self.spec.kind))
+    fn param(&self, id: &str) -> Option<&ParamSpec> {
+        self.spec.param(id)
     }
 
+    /// The value the effect holds for `id`; zero for an id the kind does
+    /// not declare, so a panel drawn for another version of the kind shows
+    /// a still knob rather than nothing at all.
     fn get(&self, id: &str) -> f32 {
+        let Some(p) = self.param(id) else { return 0.0 };
         match self.slot.get(id) {
-            Some(v) => v.resolve(self.param(id)).0.as_f32(),
-            None => self.param(id).default.as_f32(),
+            Some(v) => v.resolve(p).0.as_f32(),
+            None => p.default.as_f32(),
         }
     }
 
     fn get_bool(&self, id: &str) -> bool {
+        let Some(p) = self.param(id) else { return false };
         match self.slot.get(id) {
-            Some(v) => v.resolve(self.param(id)).0.as_bool(),
-            None => self.param(id).default.as_bool(),
+            Some(v) => v.resolve(p).0.as_bool(),
+            None => p.default.as_bool(),
         }
     }
 
     fn variant(&self, id: &str) -> &'static str {
-        let p = self.param(id);
+        let Some(p) = self.param(id) else { return "" };
         match self.slot.get(id) {
             Some(v) => v.resolve(p).0.as_variant().unwrap_or(""),
             None => p.default.as_variant().unwrap_or(""),
@@ -91,7 +96,7 @@ const EQ_PLOT_DB: f32 = 18.0;
 /// A knob over a declared float parameter: its range, curve and unit come
 /// from the kind.
 fn knob(ui: &mut Ui, at: Pos2, label: &str, access: &mut SlotAccess, id: &str) {
-    let p = *access.param(id);
+    let Some(p) = access.param(id).copied() else { return };
     let ParamKind::Float { min, max, curve } = p.kind else { return };
     let value = access.get(id);
     let to_norm = |v: f32| match curve {
@@ -148,7 +153,7 @@ fn lamp_switch(ui: &mut Ui, centre: Pos2, on: bool, label: &str, salt: impl std:
 fn plot_frame(ui: &Ui, r: Rect) {
     ui.painter().rect_filled(r, 3.0, BG_DARK);
     ui.painter()
-        .rect_stroke(r, 3.0, Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
+        .rect_stroke(r, 3.0, Stroke::new(1.0_f32, BORDER), egui::StrokeKind::Inside);
 }
 
 fn caption(ui: &Ui, at: Pos2, text: &str) {
@@ -168,7 +173,8 @@ fn eq_plot(ui: &Ui, r: Rect, a: &SlotAccess) {
         eq.set_band_gain(b, a.get(&format!("band.{b}.gain")));
         eq.set_band_q(b, a.get(&format!("band.{b}.q")));
         eq.set_band_enabled(b, a.get_bool(&format!("band.{b}.enabled")));
-        let t = a.param(&format!("band.{b}.type")).variant_index(a.variant(&format!("band.{b}.type"))).unwrap_or(0);
+        let type_id = format!("band.{b}.type");
+        let t = a.param(&type_id).and_then(|p| p.variant_index(a.variant(&type_id))).unwrap_or(0);
         eq.set_band_type(b, t as u8);
     }
 
@@ -178,10 +184,10 @@ fn eq_plot(ui: &Ui, r: Rect, a: &SlotAccess) {
     let y_of = |d: f32| r.center().y - (d / EQ_PLOT_DB).clamp(-1.0, 1.0) * (r.height() * 0.5 - 6.0);
     for f in [100.0, 1000.0, 10_000.0] {
         let x = x_of(f);
-        ui.painter().line_segment([Pos2::new(x, r.top()), Pos2::new(x, r.bottom())], Stroke::new(1.0, BORDER.gamma_multiply(0.6)));
+        ui.painter().line_segment([Pos2::new(x, r.top()), Pos2::new(x, r.bottom())], Stroke::new(1.0_f32, BORDER.gamma_multiply(0.6)));
         ui.painter().text(Pos2::new(x + 3.0, r.bottom() - 2.0), Align2::LEFT_BOTTOM, hz(f), FontId::proportional(8.0), TEXT_DIM);
     }
-    ui.painter().line_segment([Pos2::new(r.left(), y_of(0.0)), Pos2::new(r.right(), y_of(0.0))], Stroke::new(1.0, BORDER));
+    ui.painter().line_segment([Pos2::new(r.left(), y_of(0.0)), Pos2::new(r.right(), y_of(0.0))], Stroke::new(1.0_f32, BORDER));
 
     let n = r.width() as usize;
     let mut line = Vec::with_capacity(n + 1);
@@ -196,7 +202,7 @@ fn eq_plot(ui: &Ui, r: Rect, a: &SlotAccess) {
     }
     area.push(Pos2::new(r.right(), y_of(0.0)));
     fill_polygon(ui, &area, GOLD.gamma_multiply(0.18), GOLD.gamma_multiply(0.06));
-    ui.painter().add(Shape::line(line, Stroke::new(1.5, GOLD)));
+    ui.painter().add(Shape::line(line, Stroke::new(1.5_f32, GOLD)));
 }
 
 /// A transfer curve, input dB across and output dB up, for the dynamics
@@ -207,9 +213,9 @@ fn transfer_plot(ui: &Ui, r: Rect, out: impl Fn(f32) -> f32) {
     let x_of = |d: f32| r.left() + (d + span) / span * r.width();
     let y_of = |d: f32| r.bottom() - (d + span) / span * r.height();
     // Unity, faint: what the signal would do if the slot did nothing.
-    ui.painter().line_segment([Pos2::new(x_of(-span), y_of(-span)), Pos2::new(x_of(0.0), y_of(0.0))], Stroke::new(1.0, BORDER));
+    ui.painter().line_segment([Pos2::new(x_of(-span), y_of(-span)), Pos2::new(x_of(0.0), y_of(0.0))], Stroke::new(1.0_f32, BORDER));
     for d in [-40.0, -20.0] {
-        ui.painter().line_segment([Pos2::new(x_of(d), r.top()), Pos2::new(x_of(d), r.bottom())], Stroke::new(1.0, BORDER.gamma_multiply(0.5)));
+        ui.painter().line_segment([Pos2::new(x_of(d), r.top()), Pos2::new(x_of(d), r.bottom())], Stroke::new(1.0_f32, BORDER.gamma_multiply(0.5)));
         ui.painter().text(Pos2::new(x_of(d) + 3.0, r.bottom() - 2.0), Align2::LEFT_BOTTOM, format!("{d:.0}"), FontId::proportional(8.0), TEXT_DIM);
     }
     let n = r.width() as usize;
@@ -219,7 +225,7 @@ fn transfer_plot(ui: &Ui, r: Rect, out: impl Fn(f32) -> f32) {
             Pos2::new(x_of(din), y_of(out(din).clamp(-span, 0.0)))
         })
         .collect();
-    ui.painter().add(Shape::line(line, Stroke::new(1.5, GOLD)));
+    ui.painter().add(Shape::line(line, Stroke::new(1.5_f32, GOLD)));
 }
 
 /// What each band is under its automatic type, which the recipe never changes.
@@ -301,15 +307,19 @@ pub fn draw(ui: &mut Ui, r: Rect, spec: &mut ChainSpec, state: &mut FxPageState)
             }
             "reverb" => {
                 // The type is a choice, not a quantity: a list, not a dial.
-                let p = a.param("type");
-                let ParamKind::Enum { variants, labels } = p.kind else { unreachable!() };
+                let (variants, labels): (&[&str], &[&str]) = match a.param("type").map(|p| p.kind) {
+                    Some(ParamKind::Enum { variants, labels }) => (variants, labels),
+                    _ => (&[], &[]),
+                };
                 let names: Vec<NamedPreset> = labels.iter().map(|l| NamedPreset { name: l, category: None }).collect();
-                let idx = p.variant_index(a.variant("type")).unwrap_or(0);
+                let idx = variants.iter().position(|v| *v == a.variant("type")).unwrap_or(0);
                 state.reverb_picker.current_idx = idx;
                 let strip = Rect::from_min_size(Pos2::new(x0, y), Vec2::new(col.width() - 8.0, 26.0));
                 let mut cui = ui.new_child(egui::UiBuilder::new().max_rect(strip));
                 if let Some(new_idx) = picker_ui(&mut cui, &PresetPickerStyle { salt: "cordis_reverb_type", accent: GOLD, dim: TEXT_DIM }, &mut state.reverb_picker, &names) {
-                    a.set("type", variants[new_idx.min(variants.len() - 1)]);
+                    if let Some(v) = variants.get(new_idx) {
+                        a.set("type", *v);
+                    }
                 }
                 y += 40.0;
                 let at = |c: usize, row: usize| Pos2::new(x0 + c as f32 * PITCH_X, y + row as f32 * PITCH_Y);

@@ -583,12 +583,6 @@ impl Mechanics {
         }
     }
 
-    #[inline]
-    fn noise(rng: &mut u32) -> f32 {
-        *rng = rng.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-        (*rng >> 9) as f32 / (1u32 << 23) as f32 * 2.0 - 1.0
-    }
-
     /// One sample, stereo. The two channels get independent noise: a mechanism
     /// is spread across the width of the instrument, not sitting at a point.
     #[inline]

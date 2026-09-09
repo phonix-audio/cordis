@@ -12,6 +12,10 @@
 //! measured stringing of a Steinway D; Ege (2009, 2013) for the soundboard's
 //! measured modes and damping.
 
+// DSP loops index several arrays by one counter, and a contact solve takes
+// what it takes.
+#![allow(clippy::needless_range_loop, clippy::too_many_arguments)]
+
 pub mod fx;
 pub mod patch;
 pub mod modal_bank;

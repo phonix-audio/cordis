@@ -55,18 +55,18 @@ pub fn apply_visuals(ctx: &egui::Context) {
     v.window_fill = BG_LACQUER;
     v.extreme_bg_color = BG_DARK;
     v.widgets.noninteractive.bg_fill = BG_PANEL;
-    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0, TEXT_DIM);
+    v.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, TEXT_DIM);
     v.widgets.inactive.bg_fill = BG_RAISED;
-    v.widgets.inactive.fg_stroke = Stroke::new(1.0, TEXT_DIM);
+    v.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, TEXT_DIM);
     v.widgets.hovered.bg_fill = BG_RAISED;
-    v.widgets.hovered.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
-    v.widgets.hovered.bg_stroke = Stroke::new(1.0, GOLD.gamma_multiply(0.5));
+    v.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
+    v.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, GOLD.gamma_multiply(0.5));
     v.widgets.active.bg_fill = BG_RAISED;
-    v.widgets.active.fg_stroke = Stroke::new(1.0, TEXT_PRIMARY);
-    v.widgets.active.bg_stroke = Stroke::new(1.0, GOLD);
+    v.widgets.active.fg_stroke = Stroke::new(1.0_f32, TEXT_PRIMARY);
+    v.widgets.active.bg_stroke = Stroke::new(1.0_f32, GOLD);
     v.selection.bg_fill = GOLD.gamma_multiply(0.25);
-    v.selection.stroke = Stroke::new(1.0, GOLD);
-    v.window_stroke = Stroke::new(1.0, BORDER);
+    v.selection.stroke = Stroke::new(1.0_f32, GOLD);
+    v.window_stroke = Stroke::new(1.0_f32, BORDER);
     ctx.set_visuals(v);
 }
 
@@ -91,7 +91,7 @@ pub fn lamp(ui: &Ui, centre: Pos2, radius: f32, on: bool, tint: Color32) {
     }
     let body = if on { tint } else { BG_DARK };
     p.circle_filled(centre, radius, body);
-    p.circle_stroke(centre, radius, Stroke::new(1.0, BORDER));
+    p.circle_stroke(centre, radius, Stroke::new(1.0_f32, BORDER));
     if on {
         p.circle_filled(
             centre - Vec2::splat(radius * 0.35),
@@ -110,7 +110,7 @@ pub fn cluster_header(ui: &Ui, rect: Rect, title: &str) {
             Pos2::new(rect.left(), baseline.y + 9.0),
             Pos2::new(rect.left() + w.max(40.0), baseline.y + 9.0),
         ],
-        Stroke::new(1.0, BORDER),
+        Stroke::new(1.0_f32, BORDER),
     );
 }
 

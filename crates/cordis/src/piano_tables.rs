@@ -1,6 +1,10 @@
 //! Per-note coefficient tables ported verbatim from faust-stk piano.h
 //! (Romain Michon, STK-4.3 licence). Piecewise-linear breakpoints vs MIDI note
 //! (except NORM_VELOCITY, indexed by normalized velocity 0..1).
+//!
+//! The breakpoints are measured values, not constants: a 0.318 here is a
+//! pole, not 1/pi.
+#![allow(clippy::approx_constant)]
 
 pub const SINGLE_STRING_DECAY_RATE: &[(f32, f32)] = &[(21.0, -1.5), (24.0, -1.5), (28.0, -1.5), (29.0, -6.0), (36.0, -6.0), (42.0, -6.1), (48.0, -7.0), (52.836, -7.0), (60.0, -7.3), (66.0, -7.7), (72.0, -8.0), (78.0, -8.8), (84.0, -10.0), (88.619, -11.215), (92.368, -12.348), (95.684, -13.934), (99.0, -15.0)];
 pub const SINGLE_STRING_ZERO: &[(f32, f32)] = &[(21.0, -1.0), (24.0, -1.0), (28.0, -1.0), (29.0, -1.0), (32.534, -1.0), (36.0, -0.7), (42.0, -0.4), (48.0, -0.2), (54.0, -0.12), (60.0, -0.08), (66.0, -0.07), (72.0, -0.07), (79.0, -0.065), (84.0, -0.063), (88.0, -0.06), (96.0, -0.05), (99.0, -0.05)];

@@ -176,7 +176,7 @@ pub fn draw(ui: &mut Ui, rect: Rect, state: &mut KeyboardState) -> Vec<KeyEvent>
         }
         p.line_segment(
             [k.rect.right_top(), k.rect.right_bottom()],
-            Stroke::new(1.0, Color32::from_rgb(150, 142, 126)),
+            Stroke::new(1.0_f32, Color32::from_rgb(150, 142, 126)),
         );
         if k.note % 12 == 0 {
             p.text(
@@ -206,7 +206,7 @@ pub fn draw(ui: &mut Ui, rect: Rect, state: &mut KeyboardState) -> Vec<KeyEvent>
         p.rect_stroke(
             k.rect,
             2.0,
-            Stroke::new(1.0, Color32::from_rgb(12, 11, 10)),
+            Stroke::new(1.0_f32, Color32::from_rgb(12, 11, 10)),
             egui::StrokeKind::Outside,
         );
     }

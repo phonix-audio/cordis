@@ -220,7 +220,6 @@ impl SpinBarrier {
 #[derive(Clone, Copy)]
 struct Job {
     voices: *mut crate::voice::Voice,
-    n_voices: usize,
     board: *const crate::soundboard::Soundboard,
     /// Where each participant leaves the force its voices produced.
     forces: *mut f64,
@@ -264,7 +263,6 @@ unsafe impl Sync for Job {}
 impl Job {
     const EMPTY: Job = Job {
         voices: std::ptr::null_mut(),
-        n_voices: 0,
         board: std::ptr::null(),
         forces: std::ptr::null_mut(),
         idx: std::ptr::null(),
@@ -415,7 +413,6 @@ impl VoicePool {
         let frames = out_ears.len();
         let job = Job {
             voices: voices.as_mut_ptr(),
-            n_voices: voices.len(),
             board: board as *const _,
             forces: self.forces.as_mut_ptr(),
             idx: live_idx.as_ptr(),
@@ -511,7 +508,6 @@ impl VoicePool {
         self.block_forces32.resize(live_idx.len() * frames, 0.0);
         let job = Job {
             voices: voices.as_mut_ptr(),
-            n_voices: voices.len(),
             board: board as *const _,
             forces: forces.as_mut_ptr(),
             idx: live_idx.as_ptr(),

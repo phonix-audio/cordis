@@ -619,7 +619,7 @@ impl Soundboard {
 
         // ── Mode shapes at the three points ────────────────────────────────
         let norm = (1.0 / BOARD_MASS).sqrt();
-        let mut base = |seed: &mut u64| -> Vec<f64> {
+        let base = |seed: &mut u64| -> Vec<f64> {
             freqs
                 .iter()
                 .map(|&fr| {
@@ -1180,6 +1180,14 @@ impl Soundboard {
         }
     }
 
+    /// Advances the plate's modes in `lo..hi` and returns what the two ears
+    /// hear from them.
+    ///
+    /// # Safety
+    ///
+    /// The contract of `ModalBank::range_drive_tick_read2`: the ranges of
+    /// the calls running at the same time are disjoint and within the live
+    /// modes.
     pub unsafe fn range_advance(
         &self,
         lo: usize,

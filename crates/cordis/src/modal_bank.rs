@@ -565,6 +565,15 @@ impl ModalBank {
         r.map(|x| x * self.sr)
     }
 
+    /// Drives, steps and reads the modes in `lo..hi` through a shared
+    /// reference, so several ranges can advance on several threads at once.
+    ///
+    /// # Safety
+    ///
+    /// `lo <= hi <= n_active`, and no other call touches any mode in
+    /// `lo..hi`, on any thread, until this one returns: the ranges of the
+    /// calls running at the same time must be disjoint. The pool's tiling
+    /// guarantees it; a debug build checks the bounds.
     pub unsafe fn range_drive_tick_read2(
         &self,
         lo: usize,
