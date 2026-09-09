@@ -26,6 +26,9 @@ cordis-ui = { path = "crates/cordis-ui", version = "0.1.0" }
 # <sdk> <tag> --squash` moves it; nothing under vendor/ is edited here.
 phonix-fx     = { path = "vendor/phonix-sdk/crates/phonix-fx", features = ["parametric-eq", "compressor", "reverb", "brickwall-limiter"] }
 phonix-legacy = { path = "vendor/phonix-sdk/crates/phonix-legacy" }
+phonix-rt     = { path = "vendor/phonix-sdk/crates/phonix-rt" }
+phonix-plugin = { path = "vendor/phonix-sdk/crates/phonix-plugin" }
+phonix-ui     = { path = "vendor/phonix-sdk/crates/phonix-ui", default-features = false }
 # ──────────────────────────────────────────────────────────────────────────
 
 serde      = { version = "1.0", features = ["derive"] }

@@ -9,6 +9,7 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Response, Sense, Stroke, Ui, Vec
 
 use crate::colors::*;
 use crate::theme;
+use phonix_ui::theme::{engraved, tracked_text, Relief};
 
 /// What the header wants done, after the fact.
 #[derive(Default)]
@@ -52,7 +53,7 @@ pub fn draw(
         Stroke::new(1.0, Color32::from_rgb(90, 70, 36)),
         egui::StrokeKind::Inside,
     );
-    theme::engraved(
+    engraved(
         ui,
         plate.center(),
         preset_name,
@@ -165,14 +166,14 @@ pub fn draw(
 
 /// The maker's mark, letterspaced and struck into the lacquer.
 fn wordmark(ui: &Ui, left: Pos2) {
-    let w = theme::tracked_text(
+    let w = tracked_text(
         ui,
         left,
         "CORDIS",
         theme::display_font(ui.ctx(), 21.0),
         GOLD,
         3.0,
-        true,
+        Relief::Embossed,
     );
     ui.painter().line_segment(
         [

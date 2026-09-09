@@ -11,7 +11,9 @@ use std::sync::mpsc;
 
 use crate::colors::*;
 use crate::keyboard::{self, KeyEvent, KeyboardState};
-use crate::{header, scene, theme, vu, widgets};
+use crate::{header, scene, theme, vu};
+use phonix_ui::theme::{engraved, gradient_v};
+use phonix_ui::{preset_io, widgets};
 use cordis::patch::factory_presets_tagged;
 use cordis::state_buffer::SharedReader;
 use cordis::{CordisCommand, CordisMeterState, CordisPatch};
@@ -167,7 +169,7 @@ impl CordisApp {
     }
 
     pub fn draw_ui(&mut self, ctx: &egui::Context) {
-        widgets::install_image_loaders(ctx);
+        egui_extras::install_image_loaders(ctx);
         if !self.fonts_ready {
             theme::install_fonts(ctx);
             self.fonts_ready = true;
@@ -184,7 +186,7 @@ impl CordisApp {
             .frame(egui::Frame::NONE.fill(BG_LACQUER))
             .show(ctx, |ui| {
                 let full = ui.max_rect();
-                theme::gradient_v(ui, full, LACQUER_TOP, LACQUER_BOTTOM);
+                gradient_v(ui, full, LACQUER_TOP, LACQUER_BOTTOM);
 
                 let head = Rect::from_min_size(full.min, Vec2::new(full.width(), HEADER_H));
                 self.draw_header(ui, head);
@@ -319,10 +321,10 @@ impl CordisApp {
             self.tab = t;
         }
         if res.save_clicked {
-            crate::preset_io::save_patch_to_disk(&self.patch, "Cordis", &self.patch.name);
+            preset_io::save_patch_to_disk(crate::PRESET_HOME, &self.patch, "Cordis", &self.patch.name);
         }
         if res.load_clicked {
-            if let Some(p) = crate::preset_io::load_patch_from_disk::<CordisPatch>("Cordis") {
+            if let Some(p) = preset_io::load_patch_from_disk::<CordisPatch>(crate::PRESET_HOME, "Cordis") {
                 self.patch = p.clone();
                 self.send(CordisCommand::LoadPatch(Box::new(p)));
             }
@@ -408,7 +410,7 @@ impl CordisApp {
         let plate = Rect::from_min_size(Pos2::new(r.left() + 4.0, y), Vec2::new(r.width() - 8.0, 26.0));
         ui.painter().rect_filled(plate, 3.0, BG_DARK);
         ui.painter().rect_stroke(plate, 3.0, egui::Stroke::new(1.0, BORDER), egui::StrokeKind::Inside);
-        theme::engraved(
+        engraved(
             ui,
             plate.center(),
             &format!("SPREAD {:.0}%", self.patch.width * 100.0),

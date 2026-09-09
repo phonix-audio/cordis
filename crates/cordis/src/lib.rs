@@ -30,13 +30,9 @@ mod sympathy_ab;
 pub mod piano_tables;
 pub mod sympathy;
 
-/// Lock-free single-writer triple buffer for the engine-to-editor meter path.
-/// Kept local rather than shared: it is 216 lines of `std`, and a shared
-/// crate would put the coupling back that this repository exists to remove.
-pub mod state_buffer;
-/// Flush-to-zero. Without it the modal banks run about a hundred times slower
-/// once their tails reach denormal amplitudes.
-pub mod denormal;
+/// The engine-to-editor meter path and the flush-to-zero guard, from the
+/// audio thread's toolbox.
+pub use phonix_rt::{denormal, triple_buffer as state_buffer};
 
 pub use engine::{CordisCommand, CordisEngine, CordisMeterState};
 pub use patch::CordisPatch;

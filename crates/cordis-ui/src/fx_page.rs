@@ -9,11 +9,14 @@
 
 use egui::{Align2, FontId, Pos2, Rect, Sense, Shape, Stroke, Ui, Vec2};
 use phonix_fx::effects::parametric_eq::ParametricEq;
-use phonix_fx::{ChainSpec, EffectSpec, ParamKind, ParamSpec, Registry, SlotSpec, SpecValue, Value};
+use phonix_fx::{ChainSpec, EffectSpec, ParamKind, ParamSpec, Registry, SlotSpec, SpecValue};
 
 use crate::colors::{BG_DARK, BORDER, GOLD, GOLD_BRIGHT, TEXT_DIM};
-use crate::preset_picker::{picker_ui, NamedPreset, PresetPickerState, PresetPickerStyle};
-use crate::{theme, widgets};
+use phonix_ui::preset_picker::{picker_ui, NamedPreset, PresetPickerState, PresetPickerStyle};
+use phonix_ui::theme::{engraved, fill_polygon};
+use phonix_ui::widgets;
+
+use crate::theme;
 
 /// What the page keeps between frames: the dropdown's own state, and the
 /// kinds this build draws.
@@ -192,7 +195,7 @@ fn eq_plot(ui: &Ui, r: Rect, a: &SlotAccess) {
         area.push(p);
     }
     area.push(Pos2::new(r.right(), y_of(0.0)));
-    theme::fill_polygon(ui, &area, GOLD.gamma_multiply(0.18), GOLD.gamma_multiply(0.06));
+    fill_polygon(ui, &area, GOLD.gamma_multiply(0.18), GOLD.gamma_multiply(0.06));
     ui.painter().add(Shape::line(line, Stroke::new(1.5, GOLD)));
 }
 
@@ -226,7 +229,7 @@ const BAND_NAMES: [&str; 4] = ["LOW\nSHELF", "PEAK 1", "PEAK 2", "HIGH\nSHELF"];
 /// to publish the chain.
 pub fn draw(ui: &mut Ui, r: Rect, spec: &mut ChainSpec, state: &mut FxPageState) -> bool {
     if spec.is_empty() {
-        theme::engraved(ui, r.center(), "this patch carries no effects", FontId::proportional(12.0), TEXT_DIM, Align2::CENTER_CENTER);
+        engraved(ui, r.center(), "this patch carries no effects", FontId::proportional(12.0), TEXT_DIM, Align2::CENTER_CENTER);
         return false;
     }
 

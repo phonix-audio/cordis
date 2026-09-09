@@ -20,6 +20,7 @@ crate-type = ["rlib"]
 # this dependency.
 phonix-fx = { workspace = true }
 phonix-legacy = { workspace = true }
+phonix-rt = { workspace = true }
 serde = { workspace = true }
 
 # Scheduling only, and only on Linux: the worker threads that share a sample

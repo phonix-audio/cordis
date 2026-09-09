@@ -13,10 +13,9 @@ use cordis::patch::factory_presets_tagged;
 use cordis::{CordisCommand, CordisEngine, CordisMeterState, CordisPatch};
 use cordis::state_buffer::{meter_channel, SharedReader, Writer};
 mod fx;
-mod vstpreset;
 use phonix_fx::{Chain, ChainSpec, Musical, Transport};
 use std::sync::atomic::{AtomicU64, Ordering};
-use vstpreset::ParamValue;
+use phonix_plugin::vstpreset::{self, ParamValue};
 
 const KNOBS: usize = 8;
 

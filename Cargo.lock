@@ -658,6 +658,7 @@ dependencies = [
  "libc",
  "phonix-fx",
  "phonix-legacy",
+ "phonix-rt",
  "rustfft",
  "serde",
  "serde_json",
@@ -673,6 +674,7 @@ dependencies = [
  "nice-plug",
  "nice-plug-egui",
  "phonix-fx",
+ "phonix-plugin",
  "serde_json",
 ]
 
@@ -696,6 +698,8 @@ dependencies = [
  "egui_extras",
  "egui_kittest",
  "phonix-fx",
+ "phonix-rt",
+ "phonix-ui",
  "rfd",
  "serde",
  "serde_json",
@@ -2833,6 +2837,32 @@ version = "0.2.0"
 dependencies = [
  "phonix-fx",
  "serde",
+]
+
+[[package]]
+name = "phonix-plugin"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "phonix-rt"
+version = "0.2.0"
+
+[[package]]
+name = "phonix-ui"
+version = "0.2.0"
+dependencies = [
+ "directories",
+ "egui",
+ "egui_extras",
+ "phonix-plugin",
+ "rfd",
+ "serde",
+ "serde_json",
+ "wayland-sys",
 ]
 
 [[package]]

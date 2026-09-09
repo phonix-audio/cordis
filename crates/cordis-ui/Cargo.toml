@@ -13,6 +13,8 @@ crate-type = ["rlib"]
 # page is drawn with Cordis's own widgets so it is one instrument, not an
 # instrument with the sequencer's rack bolted on.
 phonix-fx      = { workspace = true }
+phonix-rt      = { workspace = true }
+phonix-ui      = { workspace = true }
 cordis      = { workspace = true }
 egui        = { workspace = true }
 egui_extras = { workspace = true }

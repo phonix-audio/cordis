@@ -11,7 +11,7 @@ use egui::{Color32, Pos2, Rect, Response, Sense, Shape, Stroke, Ui, Vec2};
 
 use crate::colors::*;
 use crate::piano_geom as geom;
-use crate::theme;
+use phonix_ui::theme::{engraved, fill_polygon, gradient_v};
 
 /// What the user did to the scene this frame.
 #[derive(Default)]
@@ -96,7 +96,7 @@ fn shadow(ui: &Ui, r: Rect) {
         .map(|p| p + Vec2::new(6.0, 8.0))
         .collect();
     let ink = Color32::from_rgba_unmultiplied(0, 0, 0, 90);
-    theme::fill_polygon(ui, &pts, ink, ink);
+    fill_polygon(ui, &pts, ink, ink);
 }
 
 /// The lacquered case, with the inset line that reads as an open lid: the eye
@@ -104,7 +104,7 @@ fn shadow(ui: &Ui, r: Rect) {
 /// like the inside.
 fn case(ui: &Ui, r: Rect) {
     let outline = poly(r, &geom::case_outline());
-    theme::fill_polygon(ui, &outline, CASE_LACQUER, CASE_LACQUER);
+    fill_polygon(ui, &outline, CASE_LACQUER, CASE_LACQUER);
     ui.painter()
         .add(Shape::closed_line(outline, Stroke::new(2.0, CASE_EDGE)));
     ui.painter().add(Shape::closed_line(
@@ -118,7 +118,7 @@ fn case(ui: &Ui, r: Rect) {
 fn soundboard(ui: &mut Ui, r: Rect) {
     let inner = geom::case_inset(0.07);
     let pts = poly(r, &inner);
-    theme::fill_polygon(ui, &pts, WOOD_TOP, WOOD_BOTTOM);
+    fill_polygon(ui, &pts, WOOD_TOP, WOOD_BOTTOM);
 
     // Grain, running very slightly off vertical as a real board's does, and
     // ending at the rim rather than at the edge of the box.
@@ -160,7 +160,7 @@ fn frame(ui: &mut Ui, r: Rect) {
         Stroke::new(1.0, CASE_EDGE),
     );
     let block = Rect::from_min_max(at(r, (0.03, v0)), at(r, (0.97, v1)));
-    theme::gradient_v(ui, block, FRAME_DARK, FRAME_LIGHT);
+    gradient_v(ui, block, FRAME_DARK, FRAME_LIGHT);
     ui.painter()
         .rect_stroke(block, 1.0, Stroke::new(1.0, CASE_EDGE), egui::StrokeKind::Inside);
 
@@ -333,7 +333,7 @@ fn microphones(ui: &mut Ui, r: Rect, st: &SceneState<'_>) -> Option<f32> {
 
         if resp.hovered() || resp.dragged() {
             let w = changed.unwrap_or(st.width);
-            theme::engraved(
+            engraved(
                 ui,
                 mid - Vec2::new(0.0, 22.0),
                 &format!("SPREAD {:.0}%", w * 100.0),

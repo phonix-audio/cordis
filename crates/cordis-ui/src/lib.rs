@@ -10,16 +10,9 @@
 //! `cordis` would be switched on for the engine's own tests by any
 //! `cargo test --workspace`. A crate boundary is the only thing that makes
 //! "the engine never sees egui" true rather than merely intended.
-//!
-//! It also gives the orphan rule somewhere to stand: `Preset` is declared here
-//! and implemented on `cordis::CordisPatch`, which is legal precisely because
-//! the trait is local. The engine used to carry that impl itself, which made a
-//! physics model depend on a DAW's widget layer.
 
 pub mod app;
 pub mod colors;
-pub mod preset_io;
-pub mod preset_picker;
 pub mod fx_page;
 pub mod header;
 pub mod keyboard;
@@ -27,10 +20,9 @@ pub mod piano_geom;
 pub mod scene;
 pub mod theme;
 pub mod vu;
-pub mod widgets;
 
 pub use app::CordisApp;
 
-impl preset_picker::Preset for cordis::CordisPatch {
-    fn preset_name(&self) -> &str { &self.name }
-}
+/// Where a saved patch goes on disk.
+pub const PRESET_HOME: phonix_ui::preset_io::PresetHome =
+    phonix_ui::preset_io::PresetHome { organisation: "Phonix Audio", application: "Cordis" };
