@@ -1,6 +1,6 @@
 [package]
 name = "phonix-plugin"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "What a plugin binary needs that is neither audio nor a widget: the preset contract, the .vstpreset writer, its identity, and the in-process instrument contract"

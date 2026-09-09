@@ -1,6 +1,6 @@
 [package]
 name = "phonix-dsp"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Plugin-agnostic DSP primitives: filters, oscillators, LFOs, dynamics, granular and spectral resynthesis"

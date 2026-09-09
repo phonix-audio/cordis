@@ -1,6 +1,6 @@
 [package]
 name = "phonix-fx"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "The effects contract: the Effect trait, self-describing parameter specs, chains and their serialisable description; every effect behind a feature"
