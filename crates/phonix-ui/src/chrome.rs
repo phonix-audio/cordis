@@ -239,34 +239,27 @@ const CHROME_PILL_PT:  f32 = 11.0;
 const CHROME_STATUS_PT:f32 = 10.0;
 const CHROME_GAP:      f32 = 12.0;
 
-/// Plugin chrome wrapped in a uniform `Panel::top`. Use this from
-/// `draw_ui(ctx)` BEFORE the plugin's `CentralPanel::show` so every
-/// plugin window gets identical chrome framing (fill, border stroke,
-/// inner margin, height) regardless of what theme the plugin uses
-/// in its body. Replaces the per-plugin pattern of calling
-/// `plugin_chrome` inline inside a CentralPanel — which inherited
-/// whatever frame the CentralPanel was using and made the chrome
-/// look different from plugin to plugin.
-///
-/// Returns the same `ChromeResult` as `plugin_chrome`. Caller still
-/// reacts to `pill_clicked` / `preset_selected`.
+/// The chrome in a `Panel::top` with one frame, so every plugin window gets
+/// the same fill, border, margin and height whatever theme its body uses.
+/// Call it from the root `Ui` before the body's central panel.
 pub fn plugin_chrome_panel<P: preset_picker::Preset>(
-    ctx:          &egui::Context,
+    ui:           &mut Ui,
     chrome:       &PluginChrome,
     preset_state: &mut preset_picker::PresetPickerState,
     presets:      &[P],
 ) -> ChromeResult {
-    let pal = Palette::of(ctx);
+    let pal = Palette::of(ui.ctx());
     egui::Panel::top("plugin_chrome_panel")
         .frame(
             egui::Frame::NONE
                 .fill(pal.bg_raised)
                 .inner_margin(egui::Margin::symmetric(10i8, 5i8))
-                .stroke(egui::Stroke::new(1.0, pal.border)),
+                .stroke(egui::Stroke::new(1.0_f32, pal.border)),
         )
-        .show(ctx, |ui| plugin_chrome(ui, chrome, preset_state, presets))
+        .show_inside(ui, |ui| plugin_chrome(ui, chrome, preset_state, presets))
         .inner
 }
+
 #[cfg(test)]
 mod chrome_tests {
     use super::*;

@@ -210,7 +210,7 @@ pub fn icon_btn(
     let img = egui::Image::from_bytes(uri, svg)
         .fit_to_exact_size(Vec2::splat(size))
         .tint(tint);
-    ui.add(egui::ImageButton::new(img))
+    ui.add(egui::Button::image(img))
 }
 
 /// Transport-sized icon button (28×28 outer, 16px icon).
@@ -219,7 +219,7 @@ pub fn transport_btn(ui: &mut Ui, svg: &'static [u8], uri: &'static str, tint: C
         .fit_to_exact_size(Vec2::splat(16.0))
         .tint(tint);
     ui.add(
-        egui::ImageButton::new(img)
+        egui::Button::image(img)
             .frame(true),
     )
 }
@@ -229,7 +229,7 @@ pub fn small_icon_btn(ui: &mut Ui, svg: &'static [u8], uri: &'static str, tint: 
     let img = egui::Image::from_bytes(uri, svg)
         .fit_to_exact_size(Vec2::splat(12.0))
         .tint(tint);
-    ui.add(egui::ImageButton::new(img).frame(false))
+    ui.add(egui::Button::image(img).frame(false))
 }
 
 /// Draw an inline decorative icon (no interaction, no frame) at a given size.

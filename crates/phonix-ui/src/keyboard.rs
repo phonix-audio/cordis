@@ -186,19 +186,19 @@ fn draw_wheel(
     let painter = ui.painter();
     painter.rect_filled(rect, 3u8, Color32::from_rgb(24, 24, 29));
     let pal = Palette::of(ui.ctx());
-    painter.rect_stroke(rect, 3u8, Stroke::new(0.5, pal.border), egui::StrokeKind::Outside);
+    painter.rect_stroke(rect, 3u8, Stroke::new(0.5_f32, pal.border), egui::StrokeKind::Outside);
     let t = (*value - lo) / (hi - lo);
     let y = rect.bottom() - t * rect.height();
     painter.line_segment(
         [Pos2::new(rect.left() + 2.0, y), Pos2::new(rect.right() - 2.0, y)],
-        Stroke::new(3.0, accent),
+        Stroke::new(3.0_f32, accent),
     );
     if snap_back {
         // Center detent line.
         let cy = rect.center().y;
         painter.line_segment(
             [Pos2::new(rect.left(), cy), Pos2::new(rect.right(), cy)],
-            Stroke::new(0.5, Color32::from_rgb(70, 72, 80)),
+            Stroke::new(0.5_f32, Color32::from_rgb(70, 72, 80)),
         );
     }
     painter.text(
@@ -322,7 +322,7 @@ fn keyboard_keys(ui: &mut Ui, state: &mut KeyboardState, style: &KeyboardStyle, 
             else { Color32::from_rgb(212, 217, 222) };
         painter.rect_filled(key.rect, 3u8, fill);
         painter.rect_stroke(key.rect, 3u8,
-            Stroke::new(if held { 2.0 } else { 0.5 }, if held { Color32::WHITE } else { pal.border }),
+            Stroke::new(if held { 2.0_f32 } else { 0.5_f32 }, if held { Color32::WHITE } else { pal.border }),
             egui::StrokeKind::Outside);
         if style.labels && is_c {
             let oct = (key.note / 12).saturating_sub(1);
@@ -339,7 +339,7 @@ fn keyboard_keys(ui: &mut Ui, state: &mut KeyboardState, style: &KeyboardStyle, 
             else { Color32::from_rgb(24, 24, 29) };
         painter.rect_filled(key.rect, 2u8, fill);
         painter.rect_stroke(key.rect, 2u8,
-            Stroke::new(if held { 1.5 } else { 0.5 }, if held { style.accent } else { Color32::from_rgb(14, 14, 17) }),
+            Stroke::new(if held { 1.5_f32 } else { 0.5_f32 }, if held { style.accent } else { Color32::from_rgb(14, 14, 17) }),
             egui::StrokeKind::Outside);
         if !held {
             let hl = Rect::from_min_size(key.rect.left_top(), Vec2::new(key.rect.width(), 2.0));
