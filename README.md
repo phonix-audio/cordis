@@ -114,6 +114,13 @@ They need `hound` and `rustfft` as real dependencies, which is why they are a
 crate of their own: a `[[bin]]` cannot see dev-dependencies, and putting a WAV
 writer in the engine's graph would break the dependency contract above.
 
+`engine_bench` times only the process path, at one, eight, sixteen and
+thirty-one voices, on the exact board a bounce renders and on the decoupled
+board live playing runs. It is for comparing one build against another; a
+change to the release profile is judged on its live rows. Measured here, thin
+LTO with sixteen codegen units and one unit with fat LTO are within noise on
+the live rows, and fat LTO is ten to twenty percent slower on the exact board.
+
 ## Hearing it
 
 There is no audio in this repository, and that is on purpose: a render is made

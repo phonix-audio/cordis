@@ -26,6 +26,10 @@ name = "cordis_bench"
 path = "src/bin/cordis_bench.rs"
 
 [[bin]]
+name = "engine_bench"
+path = "src/bin/engine_bench.rs"
+
+[[bin]]
 name = "retire_ab"
 path = "src/bin/retire_ab.rs"
 
