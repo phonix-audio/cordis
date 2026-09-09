@@ -205,9 +205,11 @@ pub struct CordisEngine {
     pc_bank: Vec<CordisPatch>,
     /// Output trim. The model works in newtons and metres per second — the
     /// soundboard's surface velocity is of the order of tens of microns per
-    /// second — so this is the one place the physics meets the mixer. Set so a
-    /// fortissimo blow peaks a few dB below full scale, which leaves the pp-to-ff
-    /// range the model produces on its own (about 32 dB) where it lands.
+    /// second — so this is the one place the physics meets the mixer. Set so
+    /// that at a patch gain of 0.9 a fortissimo six-note chord stays under full
+    /// scale with no chain after it, which leaves the pp-to-ff range the model
+    /// produces on its own (about 32 dB) where it lands. A preset sits higher
+    /// than 0.9 because it carries a ceiling; see `patch::PRESET_GAIN`.
     out_gain: f32,
     /// Bumped once per command batch, and stamped on every voice the hammer
     /// strikes, so `note_off` can tell a note that just went down from one that

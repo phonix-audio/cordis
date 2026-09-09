@@ -83,7 +83,7 @@ impl Default for CordisPatch {
             mechanics: default_mechanics(),
             release_noise: default_release_noise(),
             tune: 0.0,
-            gain: 0.9,
+            gain: PRESET_GAIN,
             // The default patch IS the first factory preset -- same name,
             // same values -- so it carries the same chain. Distinct from the
             // `#[serde(default)]` above, which is per FIELD: a patch written
@@ -98,6 +98,16 @@ impl Default for CordisPatch {
 // an editor-side `Preset` impl, which made the engine's data model
 // depend on a DAW's widget layer. Each interface declares its own trait and
 // implements it on this type instead: legal for them, free for us.
+
+/// The output trim every factory preset ships at, on the 0..2 the knob spans.
+///
+/// The engine's own trim keeps a fortissimo six-note chord under full scale
+/// with NO chain in the way, which leaves a single fortissimo note 7.6 dB
+/// down. A preset carries a ceiling, so it can sit higher: at 1.5 a single
+/// fortissimo note peaks 3.7 dB below full scale and the chord is held at
+/// the ceiling, with a quarter of the knob still above. Measured at 48 kHz,
+/// C4 and a C major chord, through the Concert Grand chain.
+pub const PRESET_GAIN: f32 = 1.5;
 
 /// A short, honest bank. A piano is one instrument; what varies between these is
 /// what varies between two well-kept pianos, or between the same piano on two
@@ -114,7 +124,7 @@ pub fn factory_presets() -> Vec<CordisPatch> {
         mechanics: default_mechanics(),
         release_noise: default_release_noise(),
         tune: 0.0,
-        gain: 0.9,
+        gain: PRESET_GAIN,
         fx,
     };
     // The room each one is heard in. It follows the microphones: the closer
