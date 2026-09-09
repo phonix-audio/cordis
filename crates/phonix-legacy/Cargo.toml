@@ -1,6 +1,6 @@
 [package]
 name = "phonix-legacy"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 license = "MIT"
 description = "Reads the effect state written before names were the wire format and rewrites it as a ChainSpec"
