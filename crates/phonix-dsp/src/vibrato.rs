@@ -1,7 +1,5 @@
 //! Human vibrato: a multi-component pitch/amplitude vibrato that reads as a
-//! living voice rather than a mechanical LFO. Extracted verbatim from Aria's
-//! solo voice (the reference "human" singing engine) so the other voice engines
-//! can share the exact same behaviour.
+//! living voice rather than a mechanical LFO, shared by every singing voice.
 //!
 //! Layered on a delayed-onset sine: a slow rate flutter, per-cycle rate+extent
 //! wander applied at the phase-0 zero-crossing, a slow warm-up over the note

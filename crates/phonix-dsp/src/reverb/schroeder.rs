@@ -75,8 +75,7 @@ pub struct SimpleReverb {
     allpasses_r: [AllPassFilter; 2],
     /// Output gain to match convolution reverb's perceived loudness.
     /// Without this the algorithmic branch was ~3× quieter than
-    /// convolution at the same `reverb_mix` knob position. Plexus
-    /// reference: `src/plexus/bus.rs::ReverbBus`.
+    /// convolution at the same `reverb_mix` knob position.
     output_gain: f32,
 }
 

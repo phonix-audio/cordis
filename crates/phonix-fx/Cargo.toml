@@ -15,11 +15,15 @@ parametric-eq = ["dep:phonix-dsp"]
 compressor = []
 reverb = []
 brickwall-limiter = []
+delay = []
+stereo-imager = []
 # Families.
 eq = ["parametric-eq"]
 dynamics = ["compressor", "brickwall-limiter"]
 reverbs = ["reverb"]
-full = ["eq", "dynamics", "reverbs"]
+delays = ["delay"]
+spatial = ["stereo-imager"]
+full = ["eq", "dynamics", "reverbs", "delays", "spatial"]
 
 [dependencies]
 phonix-dsp = { path = "../phonix-dsp", optional = true }

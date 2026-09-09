@@ -2500,6 +2500,7 @@ dependencies = [
  "egui",
  "egui_extras",
  "egui_kittest",
+ "phonix-fx",
  "phonix-plugin",
  "rfd",
  "ron",

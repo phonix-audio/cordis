@@ -12,9 +12,12 @@ repository = "https://github.com/phonix-audio/phonix-sdk"
 default = ["ui-spec"]
 # The declarative layout renderer over a .ron spec the editor carries itself.
 ui-spec = ["dep:ron"]
+# The effects rack: a panel drawn from any EffectSpec, and slots over a ChainSpec.
+rack = ["dep:phonix-fx"]
 
 [dependencies]
 phonix-plugin = { path = "../phonix-plugin" }
+phonix-fx = { path = "../phonix-fx", default-features = false, optional = true }
 egui = "0.34"
 egui_extras = { version = "0.34", features = ["all_loaders"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -26,6 +29,7 @@ rfd = "0.15"
 
 [dev-dependencies]
 egui_kittest = { version = "0.34", features = ["wgpu", "snapshot"] }
+phonix-fx = { path = "../phonix-fx", features = ["full"] }
 
 # rfd pulls wayland-sys in, whose build script demands libwayland-client's
 # pkg-config file at COMPILE time, for a library nothing here calls directly.

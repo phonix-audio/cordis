@@ -4,7 +4,6 @@
 //! smoothed random) with a cached last value so a mod matrix can read it at
 //! control rate without advancing the phase twice.
 //!
-//! Hoisted out of the Polaris engine, which several engines already imported.
 //! The generator is engine-neutral; the *destination* of the modulation is not,
 //! so it stays with each engine. This type only carries an `enabled` gate:
 //! set it from `(destination != Off)` and route the value yourself.

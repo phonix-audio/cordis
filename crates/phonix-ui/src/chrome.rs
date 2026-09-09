@@ -127,7 +127,7 @@ pub struct ChromeResult {
 ///   vertical alignment so pills, picker chrome and status text sit
 ///   on one horizontal line regardless of font size.
 /// - The row height is pinned to `CHROME_ROW_H` so a pill-less
-///   plugin (Atmosphera) and a pill plugin (Bass) get identical
+///   plugin and a pill plugin get identical
 ///   header heights and the outer frame doesn't jump.
 /// - 12 px gap between every logical block (title | pills | picker)
 ///   plus a guaranteed 12 px gap between picker and the right-aligned
@@ -185,7 +185,7 @@ pub fn plugin_chrome<P: preset_picker::Preset>(
             peak_meter(ui, chrome.peak, Vec2::new(60.0, 8.0), chrome.accent);
             // Fixed-width CPU readout, uniform across every plugin. `{:>3.0}` +
             // monospace keeps `CPU   5%` and `CPU 100%` the SAME width, so the
-            // value never shifts the header (the Polaris "blocks move" class).
+            // value never shifts the header.
             if let Some(cpu) = chrome.cpu {
                 ui.add_space(8.0);
                 let pct = (cpu * 100.0).clamp(0.0, 999.0);

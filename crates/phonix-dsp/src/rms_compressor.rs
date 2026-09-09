@@ -1,5 +1,4 @@
-/// dB -> linear. Techno-Kick's own copy, moved here with the compressor that
-/// reads it. Deliberately NOT merged with any other dB conversion.
+/// dB -> linear, the exact form the compressor below was tuned against.
 #[inline(always)]
 pub fn db_to_linear(db: f32) -> f32 {
     (db * std::f32::consts::LN_10 / 20.0).exp()

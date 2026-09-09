@@ -54,9 +54,7 @@ impl Adsr {
     /// it fires between notes whose note-off landed before the next note-on,
     /// and you get one continuous slide instead of separate notes.
     ///
-    /// The same name and the same warning are on `crate::envelope::Envelope`,
-    /// where this bug was found and fixed once already (Bass, Magma). Three
-    /// engines sharing THIS Adsr had it too.
+    /// The same name and the same warning are on `crate::envelope::Envelope`.
     pub fn is_held(&self) -> bool {
         matches!(self.stage, Stage::Attack | Stage::Decay | Stage::Sustain)
     }
@@ -108,8 +106,7 @@ mod held_tests {
     use super::*;
 
     /// `is_held` must be false during the release, which is the whole point:
-    /// `is_active` is true there and that is what caused the glide bug in
-    /// Loquace, Aria and TranceVoice.
+    /// `is_active` is true there and that is what caused the glide bug.
     #[test]
     fn is_held_is_false_once_released() {
         let sr = 48_000.0;

@@ -1,4 +1,4 @@
-//! Aurora sample library — 32 looped sustain samples organized into
+//! A sample library: 32 looped sustain samples organized into
 //! 8 categories of 4 variants each.
 //!
 //! v4 Phase 2 design note: the architecture is sample-based; the
@@ -6,7 +6,7 @@
 //! partial stacks with bowing/breath modulation + formant body for
 //! strings/choir/wind, inharmonic decay for glass/metal). They share
 //! the SampleAsset shape with disk-loaded WAVs, so a future
-//! `assets/aurora/samples/*.wav` directory can be loaded by the same
+//! `samples/*.wav` directory can be loaded by the same
 //! `SampleLib` API by extending `generate_all()` to read disk first
 //! and fall back to procedural for missing entries.
 //!

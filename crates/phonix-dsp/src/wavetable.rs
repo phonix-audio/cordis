@@ -1,4 +1,4 @@
-//! Wavetable system for Solstice
+//! A wavetable system.
 //!
 //! 16 banks × 16 frames × 2048 samples per frame.
 //! Banks are procedurally generated at startup from additive synthesis.

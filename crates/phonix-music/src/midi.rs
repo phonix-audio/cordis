@@ -38,3 +38,26 @@ fn default_probability() -> u8 { 100 }
 
 pub const NOTE_NAMES: [&str; 12] =
     ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+/// A4 in equal temperament.
+pub const A4_HZ: f32 = 440.0;
+
+/// The frequency of a MIDI note in twelve-tone equal temperament, fractional
+/// notes included, so a bend or a glide passes through.
+pub fn hz_of(note: f32) -> f32 {
+    let note = if note.is_finite() { note } else { 69.0 };
+    A4_HZ * 2.0_f32.powf((note - 69.0) / 12.0)
+}
+
+#[cfg(test)]
+mod hz_tests {
+    use super::hz_of;
+
+    #[test]
+    fn a4_is_440_and_an_octave_doubles() {
+        assert_eq!(hz_of(69.0), 440.0);
+        assert!((hz_of(81.0) - 880.0).abs() < 1e-3);
+        assert!((hz_of(60.0) - 261.626).abs() < 1e-2);
+        assert!((hz_of(69.5) - 452.893).abs() < 1e-2);
+    }
+}

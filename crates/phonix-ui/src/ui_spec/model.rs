@@ -43,7 +43,7 @@ pub struct TabSpec {
     /// columns.
     ///
     /// Several hand-written editors lay their columns out in unequal
-    /// proportions (Strata's shared row is 20/30/25/25). Equal columns are the
+    /// proportions (a shared row of 20/30/25/25). Equal columns are the
     /// common case, but forcing them on those editors would be a visible
     /// downgrade, so the grid can be told the proportions instead.
     #[serde(default)]
@@ -52,7 +52,7 @@ pub struct TabSpec {
     pub sections: Vec<SectionSpec>,
     /// Stacked BANDS of columns, when one grid is not enough.
     ///
-    /// Strata's layer tab is four equal panels over the top 55% of the height,
+    /// A layer tab of four equal panels over the top 55% of the height,
     /// then a separate 20/30/25/25 row underneath. A single column grid cannot
     /// say that, and splitting it into two tabs would change how the editor is
     /// navigated, which is a loss. When this is non-empty it REPLACES `sections`
@@ -90,7 +90,7 @@ pub struct SectionSpec {
     pub column: Option<usize>,
     /// LAYOUT-ONLY mode: a section id drawn by the editor's own hand-written
     /// method (via `render_layout`'s callback), which also draws its header. When
-    /// set, `rows` is ignored. Used by typed-command plugins (e.g. Polaris) that
+    /// set, `rows` is ignored. Used by typed-command plugins that
     /// keep their sections in Rust but make tab/column PLACEMENT declarative.
     #[serde(default)]
     pub section: Option<String>,
@@ -172,7 +172,7 @@ pub enum ControlKind {
         #[serde(default)]
         fmt: Option<String>,
         /// Readout NAMES for a knob that sweeps a continuous field but reads
-        /// out as one of a short list (the VP-330's VOWEL knob is 0..1 in the
+        /// out as one of a short list (a VOWEL knob is 0..1 in the
         /// DSP and shows "AH"/"EH"/"IY"/"OH"/"OO").
         ///
         /// A `Selector` cannot replace it: the field really is continuous, the
@@ -223,7 +223,7 @@ pub enum ControlKind {
     ///
     /// Not a stylistic twin of `Toggle`. Where a checkbox reads as an option,
     /// a latch reads as a STOP or a footage tab that is pulled in or out, and
-    /// several editors group three or four of them in a row (the VP-330's
+    /// several editors group three or four of them in a row (a vocoder's
     /// 16'/8'/4' footings, an organ's drawbar stops). A checkbox row loses both
     /// the grouping and the at-a-glance state, so the vocabulary carries the
     /// button rather than conversions giving it up.

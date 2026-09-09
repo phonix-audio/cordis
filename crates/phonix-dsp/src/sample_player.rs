@@ -1,4 +1,4 @@
-//! Pitch-tracked looped sample playback for Aurora.
+//! Pitch-tracked looped sample playback.
 //!
 //! v4 Phase 2. Each layer owns one `SamplePlayer` that pulls from the
 //! global `samples::SampleLib`. Pitch tracking: playback_rate =
@@ -8,8 +8,7 @@
 //! crossfade around the seam so no click).
 //!
 //! Stereo: the buffer is mono on disk; the player outputs mono and
-//! the calling layer is responsible for pan / spread. This matches
-//! how WavetableOsc + AuroraSampleSrc behave in the rest of Aurora.
+//! the calling layer is responsible for pan / spread.
 
 use super::samples::{shared as samples_shared, SampleAsset};
 

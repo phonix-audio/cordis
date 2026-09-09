@@ -1,9 +1,8 @@
-//! Shared DSP primitives.
+//! Shared DSP primitives, none named after an instrument.
 //!
-//! Plugin-agnostic building blocks hoisted out of individual engines
-//! so other plugins can compose them. See `samples` for the SampleAsset
-//! shape + Aurora's procedural library, `sample_player` for pitch-
-//! tracked looped playback, and `granular` for the 16-grain scheduler.
+//! `samples` is the SampleAsset shape and a procedural library,
+//! `sample_player` pitch-tracked looped playback, `granular` a 16-grain
+//! scheduler.
 
 pub mod samples;
 pub mod sample_player;
@@ -11,23 +10,20 @@ pub mod granular;
 pub mod fastmath;
 pub mod filters;
 pub mod lfo;
-// Magma's own LFO/ducker cores. DISTINCT from `lfo::Lfo` above (different
-// shape set, sine approximation and sync table) — deliberately NOT merged.
 pub mod ducker;
 pub mod vibrato;
 pub mod oscillator;
-// Solstice's 16-bank wavetable oscillator (Aurora and Pulsar read the same banks).
+// A 16-bank wavetable oscillator.
 pub mod wavetable;
-// Loquace's ADSR. DISTINCT from any other envelope in the tree — not merged.
+// Distinct from `envelope`: another curve and another retrigger rule.
 pub mod adsr;
 
-/// Distinct from `adsr`: this is the envelope generator the Synth B lineage and
-/// four instrument engines share. The two are NOT interchangeable and must not
-/// be merged — they differ in curve and in retrigger behaviour.
+/// Distinct from `adsr`: the two differ in curve and in retrigger rule and
+/// are not interchangeable.
 pub mod envelope;
-// TranceVoice's FOF choir (Nebula layers it too).
+// A FOF choir.
 pub mod fof;
-// Techno-Kick's RMS compressor / limiter (Magma reuses it).
+// An RMS compressor / limiter.
 pub mod rms_compressor;
 // The Drum Machine's synthesized rock-kit voices (Canon909 reuses them).
 // Engine-agnostic modulation sources, and the ADSR / LFO parameter shapes.
@@ -38,3 +34,5 @@ pub mod pitch;
 pub mod reverb;
 pub mod chorus;
 pub mod meters;
+pub mod formant;
+pub mod dynamics;

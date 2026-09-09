@@ -182,7 +182,7 @@ fn render_tab(
     custom: &mut CustomTable,
 ) {
     if tab.bands.is_empty() {
-        // One-band shorthand: the shape every spec but Strata's uses.
+        // One-band shorthand: the shape most specs use.
         let band = BandSpec {
             columns: tab.columns.or(fallback_cols),
             column_weights: tab.column_weights.clone(),
@@ -338,7 +338,7 @@ fn render_control(
         ControlKind::Knob { curve, min, max, unit, names, .. } => {
             let cur = access.get_f32(&c.param).unwrap_or(0.0);
             // A pitch knob can show its Hz value as a note name when the patch
-            // carries a `pitch_unit` enum set to "Note" (Nebula's Hz/Note
+            // carries a `pitch_unit` enum set to "Note" (a Hz/Note
             // toggle). Guarded on the param name + field presence, so no other
             // plugin is affected.
             let unit = if c.param.ends_with(".pitch")
@@ -489,7 +489,7 @@ fn knob_ranged(
 /// Knob 0..1 back to a real value. The exact inverse of the `norm` mapping in
 /// `knob_ranged`, and split out so it CANNOT drift from it again: `Sqrt`
 /// normalised with a square root but denormalised linearly, so all 39 Sqrt
-/// knobs in the Solstice and Strata specs wrote a value that did not match the
+/// knobs in two specs wrote a value that did not match the
 /// pointer. The round-trip test missed it by re-implementing the formula
 /// instead of calling this.
 fn denormalise(norm: f32, curve: Curve, lo: f32, hi: f32) -> f32 {

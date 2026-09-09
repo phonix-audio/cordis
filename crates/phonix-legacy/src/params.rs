@@ -66,6 +66,20 @@ pub static PARAMS: &[Row] = &[
     Row { kind: "reverb", pid: 14, id: "", rule: Rule::IntoSlotMix },
     Row { kind: "reverb", pid: 15, id: "width", rule: Rule::Direct },
     Row { kind: "reverb", pid: 16, id: "type", rule: Rule::Enum(&["hall", "room", "plate", "spring", "shimmer", "cathedral", "cave", "ambient", "gated", "reverse", "infinite"]) },
+    // delay
+    Row { kind: "delay", pid: 0, id: "time", rule: Rule::Direct },
+    Row { kind: "delay", pid: 1, id: "feedback", rule: Rule::Direct },
+    Row { kind: "delay", pid: 2, id: "level", rule: Rule::Direct },
+    Row { kind: "delay", pid: 3, id: "stereo", rule: Rule::Direct },
+    Row { kind: "delay", pid: 4, id: "high-cut", rule: Rule::Direct },
+    Row { kind: "delay", pid: 5, id: "low-cut", rule: Rule::Direct },
+    Row { kind: "delay", pid: 6, id: "sync", rule: Rule::Bool },
+    Row { kind: "delay", pid: 7, id: "division", rule: Rule::Enum(&["1-1", "1-2", "1-4", "1-8", "1-16", "1-32", "1-2d", "1-4d", "1-8d", "1-16d", "1-2t", "1-4t", "1-8t", "1-16t"]) },
+    Row { kind: "delay", pid: 8, id: "type", rule: Rule::Enum(&["digital", "ping-pong", "tape", "multi-tap", "slapback", "analog", "reverse", "ducking", "diffused", "shimmer", "lo-fi"]) },
+    // stereo-imager
+    Row { kind: "stereo-imager", pid: 28, id: "width", rule: Rule::Direct },
+    Row { kind: "stereo-imager", pid: 29, id: "mono-freq", rule: Rule::Direct },
+    Row { kind: "stereo-imager", pid: 38, id: "", rule: Rule::IntoSlotMix },
     // brickwall-limiter
     Row { kind: "brickwall-limiter", pid: 28, id: "ceiling", rule: Rule::Direct },
     Row { kind: "brickwall-limiter", pid: 29, id: "release", rule: Rule::Direct },

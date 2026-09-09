@@ -19,13 +19,13 @@ pub const GAP_KNOB_LABEL: f32 = 4.0;
 /// columns instead of each knob sizing to its own label and shoving neighbours.
 /// Fits labels up to ~9 chars at 10pt; longer ones are painted centred and bleed
 /// a couple px into the inter-knob gap (no layout displacement). Generalises the
-/// TB-303 / Mellotron `set_min_width(50)` pattern to every editor.
+/// `set_min_width(50)` pattern to every editor.
 pub const KNOB_GROUP_W: f32 = 52.0;
 
 // ── Shared knob curve + display unit ────────────────────────────────
 // One canonical set, used both by hand-written editors and by the
 // declarative ui_spec renderer. Replaces the per-plugin private `Unit`
-// copies (bass/pulsar/guitar) and the informal "curve = which fn you call".
+// copies and the informal "curve = which fn you call".
 
 /// How a knob maps its 0..1 rotation onto the real parameter range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -37,7 +37,7 @@ pub enum Curve {
     /// Square-root response: more resolution at the BOTTOM of the range than
     /// linear, but far less extreme than log.
     ///
-    /// Appended, never reordered. Added for Solstice's FM ratio, whose
+    /// Appended, never reordered. Added for an FM ratio, whose
     /// hand-written knob used exactly this shape (`(v/max).sqrt()`); rendering
     /// it as Log would have given the low end a different feel on a parameter
     /// people tune by ear.
@@ -731,8 +731,7 @@ pub fn knob_aligned<R>(ui: &mut Ui, width: f32, knob_size: f32, add: impl FnOnce
 /// musical region into the bottom 10 % of the rotation.
 ///
 /// Consolidates four near-identical per-plugin log-knob helpers
-/// (`bass_knob_log`, `pulsar_app::knob_log`, `harmonizer_app::knob_log`,
-/// `tb303_app::knob303_log`). Per-app wrappers should delegate to
+/// Per-app wrappers should delegate to
 /// this primitive so the log math lives in one place.
 pub fn knob_log(
     ui: &mut Ui, value: &mut f32, label: &str,
@@ -855,7 +854,7 @@ pub fn section_header(ui: &mut Ui, label: &str, accent: Color32) {
 /// The declarative renderer used `ui.selectable_label`, which paints the
 /// selection with egui's DEFAULT blue regardless of the plugin's accent. Every
 /// hand-written selector in this codebase instead fills with the accent (the
-/// VP-330's Male/Female, Archet's Bow/Pluck, the organ footings), so the
+/// a vocoder's Male/Female, a bow/pluck switch, the organ footings), so the
 /// converted editors were the only ones with a blue square in an amber panel.
 pub fn selector_pill(ui: &mut Ui, label: &str, selected: bool, accent: Color32) -> egui::Response {
     let fg = if selected { Color32::WHITE } else { Palette::of(ui.ctx()).text_dim };
@@ -1167,7 +1166,7 @@ pub fn peak_meter_vertical(ui: &mut Ui, peak: f32, size: Vec2, accent: Color32) 
 
 /// Section header with an icon, no toggle.
 ///
-/// Hoisted out of the Strata editor when the declarative layer needed it: an
+/// An
 /// icon header is a house style, not one plugin's private decoration, and the
 /// generic renderer cannot reach a function that lives inside an editor.
 pub fn section_header_icon(ui: &mut Ui, icon: &'static [u8], uri: &'static str,
@@ -1207,7 +1206,7 @@ pub fn panel_header_toggle_plain(ui: &mut Ui, title: &str, color: Color32,
     //
     // It used to be a bare clickable label. That gave the user no affordance at
     // all — nothing said the title could be clicked, and an off section read as
-    // dim rather than switched off. The VP-330 conversion made it obvious: its
+    // dim rather than switched off. One conversion made it obvious: its
     // hand-written sections had checkboxes and the declarative ones did not.
     let mut on = enabled;
     section_header_toggle(ui, title, color, &mut on)

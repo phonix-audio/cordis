@@ -3,7 +3,9 @@
 //! delay compensation.
 
 pub mod denormal;
+pub mod handoff;
 pub mod pdc;
 pub mod triple_buffer;
 
 pub use triple_buffer::*;
+pub use handoff::Handoff;

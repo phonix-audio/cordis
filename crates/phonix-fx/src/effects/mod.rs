@@ -1,16 +1,24 @@
 //! The effects this build was compiled with, one module per feature.
 
-#[cfg(any(feature = "compressor", feature = "reverb"))]
+#[cfg(any(feature = "compressor", feature = "reverb", feature = "delay"))]
 mod math;
+#[cfg(any(feature = "reverb", feature = "delay"))]
+mod lines;
+#[cfg(feature = "delay")]
+pub mod tempo;
 
 #[cfg(feature = "brickwall-limiter")]
 pub mod brickwall_limiter;
 #[cfg(feature = "compressor")]
 pub mod compressor;
+#[cfg(feature = "delay")]
+pub mod delay;
 #[cfg(feature = "parametric-eq")]
 pub mod parametric_eq;
 #[cfg(feature = "reverb")]
 pub mod reverb;
+#[cfg(feature = "stereo-imager")]
+pub mod stereo_imager;
 
 use crate::registry::Entry;
 
@@ -26,6 +34,10 @@ pub fn builtin() -> Vec<Entry> {
     entries.push(Entry { spec: &reverb::SPEC, build: reverb::build });
     #[cfg(feature = "brickwall-limiter")]
     entries.push(Entry { spec: &brickwall_limiter::SPEC, build: brickwall_limiter::build });
+    #[cfg(feature = "delay")]
+    entries.push(Entry { spec: &delay::SPEC, build: delay::build });
+    #[cfg(feature = "stereo-imager")]
+    entries.push(Entry { spec: &stereo_imager::SPEC, build: stereo_imager::build });
     entries
 }
 
