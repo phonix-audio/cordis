@@ -243,8 +243,7 @@ impl Envelope {
     /// the release tail; any glide logic that gates on it will
     /// trigger between back-to-back pattern notes whose NoteOff
     /// landed before the next NoteOn, producing a continuous
-    /// glide chain instead of discrete notes. (Reported on the
-    /// Bass / Magma engines from bug.seq.json — same bug class.)
+    /// glide chain instead of discrete notes.
     pub fn is_held(&self) -> bool {
         matches!(
             self.stage,

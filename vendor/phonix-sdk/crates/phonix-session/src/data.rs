@@ -1879,9 +1879,9 @@ impl Default for Session {
             grooves:        Vec::new(),
             adaptive_intonation: false,
         };
-        // Default: one Loquace melodic track + one Drum track
+        // Default: one melodic track + one Drum track
         s.add_track(TrackConfig {
-            name:  "Loquace".to_string(),
+            name:  "Lead".to_string(),
             kind:  TrackKind::Melodic,
             engine: TrackSource::Empty,
             color: [80, 160, 220],
@@ -1895,9 +1895,9 @@ impl Default for Session {
             ..Default::default()
         });
         // Create initial patterns for each track
-        let loquace_pat = s.new_piano_roll_pattern("Pattern 1", 2);
-        s.tracks[0].session_clips[0] = Some(loquace_pat);
-        s.tracks[0].timeline.push(ClipPlacement { pattern_id: loquace_pat, start_tick: 0, length_tick: 0 , ..Default::default()});
+        let lead_pat = s.new_piano_roll_pattern("Pattern 1", 2);
+        s.tracks[0].session_clips[0] = Some(lead_pat);
+        s.tracks[0].timeline.push(ClipPlacement { pattern_id: lead_pat, start_tick: 0, length_tick: 0 , ..Default::default()});
 
         let drum_pat = s.new_drum_pattern("Pattern 1", 1, default_drum_rows());
         s.tracks[1].session_clips[0] = Some(drum_pat);

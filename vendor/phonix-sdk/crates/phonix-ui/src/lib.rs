@@ -12,6 +12,8 @@ pub mod icons;
 pub mod keyboard;
 pub mod preset_io;
 pub mod preset_picker;
+#[cfg(feature = "rack")]
+pub mod rack;
 pub mod theme;
 #[cfg(feature = "ui-spec")]
 pub mod ui_spec;

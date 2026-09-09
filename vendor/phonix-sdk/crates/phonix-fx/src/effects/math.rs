@@ -4,6 +4,7 @@
 /// Fast dB-to-linear conversion using exp2 approximation.
 /// 10^(db/20) = 2^(db * log2(10) / 20) = 2^(db * 0.16609640...)
 /// Uses the identity: exp2(x) ≈ exp(x * ln2), which the compiler can optimize well.
+#[cfg(feature = "compressor")]
 #[inline(always)]
 pub(super) fn fast_db_to_lin(db: f32) -> f32 {
     // 10^(db/20) = e^(db * ln(10)/20)
@@ -12,6 +13,7 @@ pub(super) fn fast_db_to_lin(db: f32) -> f32 {
 
 /// Fast log10 approximation using IEEE754 float bit tricks.
 /// ~0.5% accuracy, avoids expensive libm log10f. For dB conversion in compressors.
+#[cfg(feature = "compressor")]
 #[inline(always)]
 pub(super) fn fast_log10(x: f32) -> f32 {
     // log10(x) = log2(x) / log2(10)
@@ -23,6 +25,7 @@ pub(super) fn fast_log10(x: f32) -> f32 {
 
 /// Fast polynomial sin approximation for LFOs (±3% accuracy, no branching).
 /// Input in radians. Good enough for modulation where precision doesn't matter.
+#[cfg(any(feature = "reverb", feature = "delay"))]
 #[inline(always)]
 pub(super) fn fast_sin(x: f32) -> f32 {
     // Normalize to [-pi, pi]

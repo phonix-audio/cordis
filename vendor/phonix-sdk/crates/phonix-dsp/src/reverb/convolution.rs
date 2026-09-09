@@ -210,8 +210,7 @@ impl ConvolutionReverb {
         let mut scratch: Vec<Complex<f32>> = Vec::new();
         let lib = irs_shared();
         let ir = lib.get(initial_kind).expect("ir library missing initial kind");
-        // Sample-rate convert the IR if engine SR != IR SR. For Aurora
-        // we accept the slight pitch shift of running a 22.05 kHz IR
+        // Sample-rate convert the IR if engine SR != IR SR. We accept the slight pitch shift of running a 22.05 kHz IR
         // at 48 kHz (the resampling would add cost; the user-perceived
         // effect is a slightly brighter / shorter tail, which is fine
         // for cinematic verbs). A more rigorous implementation would

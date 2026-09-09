@@ -1,14 +1,10 @@
 //! Built-in sidechain-style amp ducker.
 //!
-//! Magma's PUMP-category presets pre-Phase-4 had to wire a Macro →
-//! AmpGain matrix route by hand to get sidechain pumping. The
-//! ducker turns that into a dedicated module: a tempo-synced AR
-//! envelope on amp gain that drops to `1 - depth` on each beat
-//! boundary and recovers toward 1.0 over `release_ms`. No external
-//! sidechain input required — the engine's own step clock is the
-//! trigger source.
+//! A tempo-synced AR envelope on amp gain that drops to `1 - depth` on
+//! each beat boundary and recovers toward 1.0 over `release_ms`. No
+//! external sidechain input: the engine's own step clock is the trigger.
 
-/// Persisted ducker config. Lives on `MagmaPatch`.
+/// Persisted ducker config, part of an engine's patch.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DuckerConfig {
     pub enabled:     bool,

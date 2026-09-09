@@ -5,9 +5,8 @@
 //! filter feedback soft-clip, pitch). Every use is gated by the campaign's
 //! null-test, since they slightly change the rendered output (sub-perceptual).
 //!
-//! Also provides `fast_sin` (a 4096-entry table with linear interpolation),
-//! hoisted here from Aria's voice so voice engines can share the exact same
-//! values, alongside the saturating + exponential approximations.
+//! Also provides `fast_sin` (a 4096-entry table with linear interpolation)
+//! alongside the saturating + exponential approximations.
 
 /// tanh approximation, monotonic and saturating, max error ~2.4e-2 over the
 /// usable range. At |x| = 3 it reaches exactly +-1, so clamping there gives a
@@ -22,7 +21,7 @@ pub fn fast_tanh(x: f32) -> f32 {
 }
 
 /// Accurate sine via a 4096-entry table over one period with linear
-/// interpolation. Byte-identical to the table Aria's voice used inline.
+/// interpolation.
 const SINE_N: usize = 4096;
 static SINE: std::sync::OnceLock<Vec<f32>> = std::sync::OnceLock::new();
 #[inline]

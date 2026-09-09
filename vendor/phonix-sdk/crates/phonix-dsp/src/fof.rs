@@ -331,7 +331,7 @@ mod tests {
         assert!(peak > 0.02, "FOF choir silent (peak {peak})");
     }
 
-    /// cargo test --release --lib trancevoice::fof::tests::profile -- --ignored --nocapture
+    /// cargo test --release --lib fof::tests::profile -- --ignored --nocapture
     #[test]
     #[ignore = "diagnostic"]
     fn profile() {

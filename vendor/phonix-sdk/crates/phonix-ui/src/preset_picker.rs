@@ -290,7 +290,7 @@ mod tests {
     /// before wrapping. This is the canonical contract.
     #[test]
     fn next_button_walks_bank_in_declared_order() {
-        // Mimic Plexus's category structure: each category has 4
+        // A bank where each category has 4
         // presets, 3 categories declared in order Techno -> Acid -> Glitch.
         let mut bank = Vec::new();
         for cat in ["Techno", "Acid", "Glitch"] {
@@ -370,7 +370,7 @@ mod tests {
     }
 
     /// Interleaved bank: render order stable-sorts by first
-    /// occurrence of each category. This is the Loquace case — fixed
+    /// occurrence of each category. The case of a fixed
     /// the "duplicate category header" bug.
     #[test]
     fn render_order_groups_interleaved_categories() {

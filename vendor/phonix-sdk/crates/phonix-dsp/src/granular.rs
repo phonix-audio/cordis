@@ -1,15 +1,13 @@
-//! Aurora granular synthesis — v4 Phase 3.
+//! Granular synthesis over a sample asset.
 //!
 //! 16 simultaneous grain voices per layer instance, scheduled at
 //! configurable density. Each grain reads from the global sample
 //! library at a position (with scatter) and pitch (with scatter),
 //! windowed by a Hann envelope.
 //!
-//! Adapted from Strata's `grain.rs` (8-grain scheduler, Hann via
-//! Chebyshev recurrence). Differences: source is a `SampleAsset` in
-//! the sample library rather than a synthesized waveform, and the
-//! engine supports position freeze + reverse playback for Output
-//! Portal-style frozen / reverse textures.
+//! Hann windows by Chebyshev recurrence; the source is a `SampleAsset`,
+//! and the engine supports position freeze and reverse playback for
+//! frozen / reverse textures.
 
 use std::f32::consts::TAU;
 
@@ -40,7 +38,7 @@ struct Grain {
     cos_curr:  f32,    // cos(n*step)
 }
 
-pub struct AuroraGranular {
+pub struct Granular {
     sr: f32,
     /// Grain pool. Round-robin spawn into the next idle slot.
     grains: [Grain; MAX_GRAINS],
@@ -58,11 +56,11 @@ pub struct AuroraGranular {
     sounding:  bool,
 }
 
-impl Default for AuroraGranular {
+impl Default for Granular {
     fn default() -> Self { Self::new(48_000.0) }
 }
 
-impl Clone for AuroraGranular {
+impl Clone for Granular {
     fn clone(&self) -> Self {
         Self {
             sr: self.sr,
@@ -77,7 +75,7 @@ impl Clone for AuroraGranular {
     }
 }
 
-impl AuroraGranular {
+impl Granular {
     pub fn new(sr: f32) -> Self {
         Self {
             sr,
@@ -101,9 +99,8 @@ impl AuroraGranular {
 
     /// Trigger granular cloud against a specific buffer. The caller
     /// owns the `SampleAsset` and is responsible for resolving the
-    /// source (dsp::samples lookup, Plexus percussion bundle lookup,
-    /// Mellotron tape buffer wrap, etc.). The engine itself has no
-    /// global state.
+    /// source (a library lookup, a tape buffer wrap). The engine itself has
+    /// no global state.
     pub fn note_on(&mut self, asset: &SampleAsset, freq_hz: f32) {
         // Start scrubbing at the loop_start (skip the attack onset
         // which often has render-time transients).
@@ -307,7 +304,7 @@ mod tests {
     #[test]
     fn idle_engine_produces_silence() {
         let asset = first_asset();
-        let mut g = AuroraGranular::new(48_000.0);
+        let mut g = Granular::new(48_000.0);
         let mut peak = 0.0_f32;
         for _ in 0..4096 {
             let (l, r) = g.process(asset, 220.0, 20.0, 200.0, 0.1, 50.0, 0.5, 0.5, 0.0);
@@ -319,7 +316,7 @@ mod tests {
     #[test]
     fn note_on_then_density_produces_audio() {
         let asset = first_asset();
-        let mut g = AuroraGranular::new(48_000.0);
+        let mut g = Granular::new(48_000.0);
         g.note_on(asset, 220.0);
         let mut peak = 0.0_f32;
         for _ in 0..8192 {
@@ -332,7 +329,7 @@ mod tests {
     #[test]
     fn note_off_lets_grains_fade_then_idle() {
         let asset = first_asset();
-        let mut g = AuroraGranular::new(48_000.0);
+        let mut g = Granular::new(48_000.0);
         g.note_on(asset, 220.0);
         for _ in 0..2048 {
             let _ = g.process(asset, 220.0, 30.0, 200.0, 0.0, 0.0, 0.0, 0.0, 0.0);
@@ -347,7 +344,7 @@ mod tests {
     #[test]
     fn freeze_locks_scrub_position() {
         let asset = first_asset();
-        let mut g = AuroraGranular::new(48_000.0);
+        let mut g = Granular::new(48_000.0);
         g.note_on(asset, 220.0);
         for _ in 0..512 {
             let _ = g.process(asset, 220.0, 5.0, 50.0, 0.0, 0.0, 0.0, 1.0, 0.0);

@@ -225,8 +225,7 @@ pub struct HallReverb {
     out_gain:    f32,
     /// Perceived-loudness compensation vs ConvolutionReverb at the
     /// same wet/dry mix knob. Without this the algorithmic branch
-    /// was ~3× quieter — user heard the "reverb knob does nothing"
-    /// bug on Aurora. Plexus reference: `src/plexus/bus.rs::ReverbBus`.
+    /// was ~3x quieter, heard as a reverb knob that does nothing.
     loudness_gain: f32,
 }
 

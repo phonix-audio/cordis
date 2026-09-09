@@ -75,8 +75,8 @@ impl JsonPatchAccess {
     /// Resolve a dotted path such as `layers.3.level`.
     ///
     /// A plain name is the common case and stays a single `get`. Paths exist
-    /// because several patches keep an ARRAY of sub-structs (Nebula's eight
-    /// layers, Strata's LFOs), and without indexing those editors would have to
+    /// because several patches keep an ARRAY of sub-structs (eight layers,
+    /// three LFOs), and without indexing those editors would have to
     /// hand-write every one of their controls, which is exactly the duplication
     /// the declarative layer removes.
     fn field(&self, name: &str) -> Option<&Value> {

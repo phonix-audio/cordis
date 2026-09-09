@@ -45,12 +45,12 @@ pub const LED_BLUE: Color32 = Color32::from_rgb(50, 150, 255);
 /// Highlight for sub-sections (slightly lighter than BG_RAISED)
 pub const MOOG_BLUE: Color32 = Color32::from_rgb(50, 120, 180);
 
-// ── Strata layer accent colors ───────────────────────────────────────
+// ── Layer accent colors ──────────────────────────────────────────────
 
-/// Strata primary accent — jade green
-pub const ACCENT_STRATA: Color32 = Color32::from_rgb(80, 200, 140);
-/// Archet bowed-string / harpsichord accent — warm rosin amber
-pub const ACCENT_ARCHET: Color32 = Color32::from_rgb(214, 158, 78);
+/// Jade green
+pub const ACCENT_JADE: Color32 = Color32::from_rgb(80, 200, 140);
+/// Warm rosin amber
+pub const ACCENT_ROSIN: Color32 = Color32::from_rgb(214, 158, 78);
 /// Chaos layer — hot orange-red
 pub const ACCENT_CHAOS: Color32 = Color32::from_rgb(255, 90, 60);
 /// Resonator layer — cobalt blue
@@ -60,11 +60,11 @@ pub const ACCENT_GRAIN: Color32 = Color32::from_rgb(240, 170, 50);
 /// Spectral layer — violet
 pub const ACCENT_SPECTRAL: Color32 = Color32::from_rgb(180, 100, 255);
 
-// ── Loquace accent colors ────────────────────────────────────────────
+// ── Teal accent colors ───────────────────────────────────────────────
 
-/// Loquace primary accent — teal
-pub const ACCENT_LOQUACE: Color32 = Color32::from_rgb(0, 210, 185);
-/// Loquace voice section
-pub const ACCENT_LOQUACE_VOICE: Color32 = Color32::from_rgb(0, 180, 220);
-/// Loquace FX section
-pub const ACCENT_LOQUACE_FX: Color32 = Color32::from_rgb(120, 230, 200);
+/// Teal
+pub const ACCENT_TEAL: Color32 = Color32::from_rgb(0, 210, 185);
+/// A voice section, in teal
+pub const ACCENT_TEAL_VOICE: Color32 = Color32::from_rgb(0, 180, 220);
+/// An FX section, in teal
+pub const ACCENT_TEAL_FX: Color32 = Color32::from_rgb(120, 230, 200);

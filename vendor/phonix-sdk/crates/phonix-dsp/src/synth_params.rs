@@ -38,7 +38,7 @@ impl EnvParams {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LfoParams {
-    /// Waveform index into PolarisLfoWaveform::ALL
+    /// Waveform index, in the engine's own shape table
     pub waveform: usize,
     /// Rate in Hz (0.01..20.0)
     pub rate: f32,

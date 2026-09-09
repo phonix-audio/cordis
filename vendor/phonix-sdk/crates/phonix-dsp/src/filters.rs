@@ -708,7 +708,7 @@ impl LadderOpen303 {
 //
 // A voice filter that switches between a 24 dB Moog ladder, a 12 dB SVF (low /
 // high-cascade / band / notch), and a resonant comb. Built on the primitives
-// above. Hoisted out of the Polaris engine, which Solstice and Strata import.
+// above.
 
 /// Selectable response for [`MultiModeFilter`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -772,7 +772,7 @@ impl FilterMode {
 }
 
 /// Resonant comb for the Comb+/Comb- modes. Also reused directly as a tunable
-/// metallic/Reese comb by engines that want just the comb (e.g. Pulsar).
+/// metallic/Reese comb by engines that want just the comb.
 #[derive(Debug, Clone)]
 pub struct CombFilter {
     buffer: Vec<f32>,

@@ -31,7 +31,7 @@ pub use render::{render_layout, render_spec, render_spec_inner, CustomTable};
 ///
 /// The direction that matters. Per-editor tests already check that every
 /// control names a real patch field, which catches an INVENTED knob; nothing
-/// caught a MISSING one until a Plexus draft turned out to cover 26 of 34 lane
+/// caught a MISSING one until a draft turned out to cover 26 of 34 lane
 /// fields. So this walks the command enum instead and reports what the layout
 /// forgot.
 ///
@@ -54,7 +54,7 @@ pub fn uncovered_setters(
         // CamelCase -> snake_case. A digit run starting after a letter also
         // breaks: `SetStrings16` addresses `strings_16`, and without this the
         // guard looked for `strings16`, found nothing, and reported three
-        // perfectly-covered VP-330 footings as missing.
+        // perfectly-covered footings as missing.
         let mut snake = String::new();
         let chars: Vec<char> = name.chars().collect();
         for (i, &c) in chars.iter().enumerate() {

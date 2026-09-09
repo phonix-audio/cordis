@@ -1,9 +1,8 @@
 //! Shared anti-aliased virtual-analog oscillator (PolyBLEP), with hard-sync
 //! reporting, FM, and continuous waveform morphing.
 //!
-//! Hoisted out of the Polaris engine, which Solstice already imported. The
-//! generator is engine-neutral; keep engine-specific waveform *sets* or routing
-//! in the engine.
+//! The generator is engine-neutral; keep engine-specific waveform *sets* or
+//! routing in the engine.
 
 use std::f32::consts::{PI, TAU};
 
@@ -362,4 +361,68 @@ mod tests {
         }
     }
 
+}
+
+/// One sample of a PolyBLEP sawtooth on an f64 phase in `0..1`, advanced
+/// by `freq / sample_rate`. The residual is applied around the wrap only,
+/// so the wave is the naive ramp everywhere else.
+#[inline]
+pub fn saw_polyblep(phase: &mut f64, freq: f64, sample_rate: f64) -> f32 {
+    let dt = freq / sample_rate;
+    let naive = 2.0 * *phase - 1.0;
+    let mut out = naive;
+    let t = *phase;
+    if t < dt {
+        let t = t / dt;
+        out -= t + t - t * t - 1.0;
+    } else if t > 1.0 - dt {
+        let t = (t - 1.0 + dt) / dt;
+        out -= t * t + t + t - 1.0;
+    }
+    *phase += dt;
+    if *phase >= 1.0 {
+        *phase -= 1.0;
+    }
+    out as f32
+}
+
+#[cfg(test)]
+mod polyblep_saw_tests {
+    use super::saw_polyblep;
+
+    /// Against a naive ramp at the same pitch, the PolyBLEP saw carries far
+    /// less energy in the band the ramp folds into, and keeps its harmonics.
+    #[test]
+    fn the_wrap_is_smoothed_and_the_harmonics_stay() {
+        use rustfft::{num_complex::Complex, FftPlanner};
+        let (sr, hz, n) = (48_000.0_f64, 3_100.0_f64, 4096usize);
+        let mut phase = 0.0;
+        let blep: Vec<f32> = (0..n).map(|_| saw_polyblep(&mut phase, hz, sr)).collect();
+        let mut p = 0.0;
+        let naive: Vec<f32> = (0..n).map(|_| { let s = 2.0 * p - 1.0; p += hz / sr; if p >= 1.0 { p -= 1.0; } s as f32 }).collect();
+        let spectrum = |x: &[f32]| {
+            let mut b: Vec<Complex<f32>> = x.iter().enumerate().map(|(i, v)| {
+                let w = 0.5 - 0.5 * (i as f32 * std::f32::consts::TAU / n as f32).cos();
+                Complex::new(v * w, 0.0)
+            }).collect();
+            FftPlanner::new().plan_fft_forward(n).process(&mut b);
+            b.iter().map(|c| c.norm()).collect::<Vec<_>>()
+        };
+        let (sb, sn) = (spectrum(&blep), spectrum(&naive));
+        let bin = |f: f64| (f / sr * n as f64).round() as usize;
+        // Everything that is not a harmonic of the pitch, over the whole
+        // band: what the ramp's wrap folds back, and the residual leaves.
+        let junk = |s: &[f32]| -> f32 {
+            (8..n / 2)
+                .filter(|&b| {
+                    let k = (b as f64 / bin(hz) as f64).round();
+                    (b as i64 - (k * bin(hz) as f64) as i64).abs() > 3
+                })
+                .map(|b| s[b])
+                .sum()
+        };
+        let h1 = sb[bin(hz)];
+        let h2 = sb[bin(hz * 2.0)];
+        assert!((h2 / h1 - 0.5).abs() < 0.08, "second harmonic at {} of the first", h2 / h1);
+    }
 }

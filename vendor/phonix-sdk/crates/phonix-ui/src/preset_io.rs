@@ -83,7 +83,7 @@ mod tests {
 
     #[test]
     fn preset_slug_is_path_safe() {
-        assert_eq!(preset_slug("Techno Kick"), "Techno_Kick");
+        assert_eq!(preset_slug("Big Kick"), "Big_Kick");
         assert_eq!(preset_slug("VP330"), "VP330");
         assert_eq!(preset_slug("TB-303"), "TB_303");
         // No path separator can survive into a folder name.
@@ -94,8 +94,8 @@ mod tests {
     #[test]
     fn user_preset_dir_is_per_engine_under_presets() {
         // ProjectDirs may be absent in a sandbox; only assert when it resolves.
-        if let Some(dir) = user_preset_dir(PHONIX, "Techno Kick") {
-            assert!(dir.ends_with("Techno_Kick"), "leaf must be the engine slug: {dir:?}");
+        if let Some(dir) = user_preset_dir(PHONIX, "Big Kick") {
+            assert!(dir.ends_with("Big_Kick"), "leaf must be the engine slug: {dir:?}");
             assert!(dir.parent().map_or(false, |p| p.ends_with("presets")),
                 "parent must be the shared presets/ folder: {dir:?}");
         }
@@ -105,10 +105,9 @@ mod tests {
 /// The shared Save / Load pair, for an editor whose chrome is hand-drawn.
 ///
 /// `plugin_chrome_panel` already offers these, but several editors keep a
-/// bespoke top bar (the VP-330's instrument panel, TechnoKick's) and so had NO
-/// on-disk user presets at all: the factory bank and nothing else. Polaris had
-/// them but hand-rolled its own `rfd` dialogs, which meant its files did not
-/// land in the same per-engine directory as everyone else's.
+/// bespoke top bar and so had NO on-disk user presets at all: the factory bank
+/// and nothing else. Others hand-rolled their own `rfd` dialogs, and their files
+/// did not land in the same per-engine directory as everyone else's.
 ///
 /// Returns the loaded patch when the user picked one.
 pub fn disk_preset_buttons<P>(

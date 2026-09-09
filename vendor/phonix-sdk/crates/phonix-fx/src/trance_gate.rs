@@ -1,10 +1,5 @@
 //! Tempo-synced stereo step VCA (trance gate).
 //!
-//! Hoisted out of the TranceVoice engine so it is not an effect an instrument
-//! owns: effects belong to the host, and a rhythmic gate is useful on any track,
-//! not only on a trance voice. TranceVoice drives this same code, so there is
-//! one implementation and the sound is unchanged.
-//!
 //! Timing (step length, smoothing) is pushed in via `set_timing` because it
 //! depends on the host tempo; the pattern itself is passed per sample.
 

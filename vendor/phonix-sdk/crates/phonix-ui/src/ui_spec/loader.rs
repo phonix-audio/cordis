@@ -20,7 +20,7 @@ pub struct SpecHandle {
 }
 
 impl SpecHandle {
-    /// `plugin` is the file stem (`"aria"` -> `ui_specs/aria.ron`); `baked` is the
+    /// `plugin` is the file stem (`"voice"` -> `ui_specs/voice.ron`); `baked` is the
     /// `include_str!` of that same file (the shipped default).
     pub fn load(plugin: &str, baked: &'static str) -> Self {
         let baked_spec = ron::from_str::<PluginUiSpec>(baked).unwrap_or_else(|e| {

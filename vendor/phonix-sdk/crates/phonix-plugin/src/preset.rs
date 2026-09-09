@@ -15,7 +15,7 @@ pub trait Preset {
 }
 
 /// Lightweight adapter for engines whose preset list is just
-/// `(name, category)` pairs (e.g. Singer voice presets, drum
+/// `(name, category)` pairs (voice presets, drum
 /// patterns, drum kits). Construct on the fly from any source and
 /// hand to `picker_ui` without having to invent a wrapper type.
 pub struct NamedPreset<'a> {

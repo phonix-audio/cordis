@@ -33,11 +33,8 @@ impl IrKind {
     /// - **target_damping** (0..1) — high-frequency loss per echo
     ///   (Cathedral/Plate/Spring=bright, Wooden Hall/Ambient=dark)
     ///
-    /// The Plexus reference (`src/plexus/bus.rs::ReverbBus` +
-    /// `src/plexus/engine.rs::algorithmic_ir_params`) shipped these
-    /// numbers — putting them in a shared helper so every plugin's
-    /// algorithmic branch gets the same IR-aware character instead
-    /// of an inert IR-dropdown bug.
+    /// One shared helper, so every algorithmic branch gets the same
+    /// IR-aware character.
     pub fn algorithmic_target(self) -> (f32, f32) {
         match self {
             IrKind::Cathedral       => (0.95, 0.05),
@@ -56,7 +53,7 @@ impl IrKind {
     /// Blend the user's "size" knob (0..1) with this IR's character
     /// size, then return `(effective_size, target_damping)` ready
     /// for `set_size` / `set_damping` calls on the algorithmic
-    /// reverb. Mirrors Plexus's `algorithmic_ir_params` formula:
+    /// reverb. The formula:
     /// `size = 0.5 * knob + 0.5 * target_size`.
     pub fn algorithmic_params(self, knob: f32) -> (f32, f32) {
         let (target_size, damp) = self.algorithmic_target();
