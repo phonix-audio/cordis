@@ -1,0 +1,20 @@
+[package]
+name = "phonix-fx"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "The effects layer: the FX rack and its 40+ effect types, chain specs, preset banks, convolution/IR reverb and loudness metering"
+keywords = ["audio", "effects", "reverb", "delay", "vst"]
+categories = ["multimedia::audio"]
+repository = "https://github.com/phonix-audio/phonix-sdk"
+
+[dependencies]
+phonix-dsp = { path = "../phonix-dsp" }
+phonix-data = { path = "../phonix-data" }
+serde = { version = "1.0", features = ["derive"] }
+rustfft = "6.2"
+log = "0.4"
+
+[dev-dependencies]
+serde_json = "1.0"
+hound = "3.5"

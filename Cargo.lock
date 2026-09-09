@@ -2813,15 +2813,14 @@ dependencies = [
 [[package]]
 name = "phonix-data"
 version = "0.1.0"
-source = "git+https://github.com/phonix-audio/phonix-sdk.git?tag=v0.1.2#e59d7c454f0e0835762b29f28656a8dbf5ea236a"
 dependencies = [
  "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "phonix-dsp"
 version = "0.1.0"
-source = "git+https://github.com/phonix-audio/phonix-sdk.git?tag=v0.1.2#e59d7c454f0e0835762b29f28656a8dbf5ea236a"
 dependencies = [
  "rustfft",
  "serde",
@@ -2830,13 +2829,14 @@ dependencies = [
 [[package]]
 name = "phonix-fx"
 version = "0.1.0"
-source = "git+https://github.com/phonix-audio/phonix-sdk.git?tag=v0.1.2#e59d7c454f0e0835762b29f28656a8dbf5ea236a"
 dependencies = [
+ "hound",
  "log",
  "phonix-data",
  "phonix-dsp",
  "rustfft",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

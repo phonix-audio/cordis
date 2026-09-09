@@ -5,6 +5,9 @@ members = [
     "crates/cordis-research",
     "crates/cordis-ui",
     "crates/cordis-plugin",
+    "crates/phonix-fx",
+    "crates/phonix-dsp",
+    "crates/phonix-data",
 ]
 
 [workspace.package]
@@ -19,17 +22,13 @@ cordis    = { path = "crates/cordis",    version = "0.1.0" }
 cordis-ui = { path = "crates/cordis-ui", version = "0.1.0" }
 
 # ── THE SHARED CRATES ────────────────────────────────────────────────────
-# They come from phonix-sdk, by tag and never by branch, so a build today and
-# a build next year see the same code. This block is the ONLY place they are
-# named: members opt in with `phonix-fx = { workspace = true }`, and the ones
-# this plugin does not use simply stay unreferenced here.
-phonix-rt     = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
-phonix-dsp    = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
-phonix-data   = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
-phonix-ui     = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
-phonix-fx     = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
-phonix-fx-ui  = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
-phonix-preset = { git = "https://github.com/phonix-audio/phonix-sdk.git", tag = "v0.1.2" }
+# The same crates the sequencer builds from phonix/crates, carried here so a
+# clone of this repository alone builds, with no access to anything else. A
+# change lands there first, with the sequencer's tests behind it, and is
+# copied here. Members opt in with `phonix-fx = { workspace = true }`.
+phonix-fx   = { path = "crates/phonix-fx" }
+phonix-dsp  = { path = "crates/phonix-dsp" }
+phonix-data = { path = "crates/phonix-data" }
 # ──────────────────────────────────────────────────────────────────────────
 
 serde      = { version = "1.0", features = ["derive"] }

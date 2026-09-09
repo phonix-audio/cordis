@@ -94,12 +94,11 @@ overflow rather than as a test failure. The bundling script wants `bash` and
 `python3`, and the Windows cross-build additionally wants `cargo-xwin` and
 `clang-cl`. macOS is not built.
 
-The effects come from the shared `phonix-sdk` crates, depended on by git tag
-in `Cargo.toml`. That repository is private for now, so a clone needs read
-access to it: locally through your git credentials, and in CI through the
-`SDK_READ_TOKEN` secret, a fine-grained token with read access to its contents
-and nothing else. `.github/workflows/ci.yml` builds and tests on Linux and
-Windows on every push, and a tag `v*` publishes both bundles as a release.
+The effects come from three shared crates carried in `crates/` --
+`phonix-fx`, `phonix-dsp`, `phonix-data` -- the same ones the sequencer builds
+from, so a clone of this repository alone builds. `.github/workflows/ci.yml`
+builds and tests on Linux and Windows on every push, and a tag `v*` publishes
+both bundles as a release; none of it needs a secret.
 
 ## Measurement tools
 
