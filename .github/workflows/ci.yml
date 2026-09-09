@@ -80,13 +80,15 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # Checkout first: it cleans the workspace, and would take the
+      # downloaded bundles with it.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: docs/releases
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
-      - uses: actions/checkout@v4
-        with:
-          sparse-checkout: docs/releases
       # Notes written for the tag under docs/releases/<tag>.md; the commit
       # list otherwise.
       - name: Publish the release
