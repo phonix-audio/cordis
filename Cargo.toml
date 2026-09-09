@@ -5,9 +5,6 @@ members = [
     "crates/cordis-research",
     "crates/cordis-ui",
     "crates/cordis-plugin",
-    "crates/phonix-fx",
-    "crates/phonix-dsp",
-    "crates/phonix-data",
 ]
 # The SDK mirror is its own workspace; its crates are reached by path.
 exclude = ["vendor/phonix-sdk"]
@@ -29,9 +26,6 @@ cordis-ui = { path = "crates/cordis-ui", version = "0.1.0" }
 # <sdk> <tag> --squash` moves it; nothing under vendor/ is edited here.
 phonix-fx     = { path = "vendor/phonix-sdk/crates/phonix-fx", features = ["parametric-eq", "compressor", "reverb", "brickwall-limiter"] }
 phonix-legacy = { path = "vendor/phonix-sdk/crates/phonix-legacy" }
-# The effects crate as it was, kept until the A/B render against it has
-# passed; nothing but that test reaches it.
-phonix-fx-old = { package = "phonix-fx", path = "crates/phonix-fx" }
 # ──────────────────────────────────────────────────────────────────────────
 
 serde      = { version = "1.0", features = ["derive"] }
