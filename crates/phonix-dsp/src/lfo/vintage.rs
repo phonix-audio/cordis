@@ -138,16 +138,25 @@ impl SyncedLfo {
     pub fn phase(&self) -> f32 { self.phase }
 }
 
+/// Bhaskara's parabola, refined once: within 0.001 of a sine over the
+/// whole cycle.
+///
+/// The linear term is 4/pi. It was 2/pi, which put a zero where the peak
+/// belongs and sent the curve to +-2.45 at the half cycle, where it jumped
+/// the full width in one sample. An LFO on a filter's cutoff moved it two
+/// octaves between two samples, once per cycle, and that was heard as a
+/// jump in a held chord.
 #[inline(always)]
 fn fast_sin(x: f32) -> f32 {
-    // Cheap sine: parabolic approximation. Accurate to ~0.06.
-    // For LFO mod this is more than enough.
+    const B: f32 = 4.0 / std::f32::consts::PI;
+    const C: f32 = 4.0 / (std::f32::consts::PI * std::f32::consts::PI);
     let two_pi = std::f32::consts::TAU;
     let mut p = x - two_pi * (x / two_pi).floor();
-    if p > std::f32::consts::PI { p -= two_pi; }
-    let q = p * std::f32::consts::FRAC_2_PI;
-    let r = q - q * q.abs();
-    r * (0.225 * (r.abs() - 1.0) + 1.0)
+    if p > std::f32::consts::PI {
+        p -= two_pi;
+    }
+    let y = B * p - C * p * p.abs();
+    0.225 * (y * y.abs() - y) + y
 }
 
 #[cfg(test)]
@@ -171,6 +180,53 @@ mod tests {
         }
         assert!(min < -0.9, "expected sine to reach -1, got {min}");
         assert!(max >  0.9, "expected sine to reach +1, got {max}");
+        assert!(min >= -1.001 && max <= 1.001, "the sine leaves its range: {min}..{max}");
+    }
+
+    /// The sine IS a sine, and it never steps.
+    ///
+    /// It used to reach 2.45 at the half cycle and jump the whole way to
+    /// -2.45 at the next sample. Anything modulated by it jumped with it,
+    /// once per cycle, which is what a held note heard.
+    #[test]
+    fn the_sine_is_one_and_does_not_step() {
+        for x in 0..2000 {
+            let a = x as f32 / 2000.0 * std::f32::consts::TAU * 3.0 - std::f32::consts::TAU;
+            let want = a.sin();
+            let got = fast_sin(a);
+            assert!((got - want).abs() < 0.002, "sin({a}) = {got}, not {want}");
+        }
+        let sr = 48_000.0_f32;
+        let mut lfo = SyncedLfo::new(sr);
+        lfo.set_rate_hz(2.0);
+        lfo.set_shape(LfoShape::Sine);
+        let mut last = lfo.tick(false);
+        let mut worst = 0.0f32;
+        for _ in 0..(sr as usize) {
+            let v = lfo.tick(false);
+            worst = worst.max((v - last).abs());
+            last = v;
+        }
+        // One sample of a 2 Hz sine moves by 2.6e-4 at most.
+        assert!(worst < 1e-3, "the sine steps by {worst} in one sample");
+    }
+
+    /// Every shape stays inside the range a modulation matrix scales.
+    #[test]
+    fn every_shape_stays_in_range() {
+        let sr = 48_000.0_f32;
+        for shape in [LfoShape::Sine, LfoShape::Triangle, LfoShape::Square, LfoShape::Saw, LfoShape::SampleHold, LfoShape::SmoothRandom] {
+            let mut lfo = SyncedLfo::new(sr);
+            lfo.set_rate_hz(3.0);
+            lfo.set_shape(shape);
+            let (mut lo, mut hi) = (0.0f32, 0.0f32);
+            for _ in 0..(sr as usize) {
+                let v = lfo.tick(false);
+                lo = lo.min(v);
+                hi = hi.max(v);
+            }
+            assert!(lo >= -1.001 && hi <= 1.001, "{shape:?} runs {lo}..{hi}");
+        }
     }
 
     #[test]
