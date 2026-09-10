@@ -198,9 +198,13 @@ impl Singer {
         (self.rng & 0xFFFF) as f32 / 65535.0 * 2.0 - 1.0
     }
 
+    /// A fresh note. Each singer's first grain lands at its own moment
+    /// inside the first few milliseconds: singers that all started on the
+    /// same sample summed coherently, then beat against each other into a
+    /// dip a tenth of a second in.
     fn reset(&mut self) {
         for fo in &mut self.grains { for g in fo.iter_mut() { g.active = false; } }
-        self.samples_to_trigger = 0.0;
+        self.samples_to_trigger = self.next_rand().abs() * self.sr * 0.005;
         self.breath_lp = 0.0;
         self.vib_phase = self.next_rand().abs();
         self.human_vib = crate::vibrato::HumanVibrato::default();
@@ -329,6 +333,29 @@ mod tests {
             peak = peak.max(l.abs());
         }
         assert!(peak > 0.02, "FOF choir silent (peak {peak})");
+    }
+
+    /// Five singers hold their level from the first moments: the onset is
+    /// not a coherent burst followed by a dip.
+    #[test]
+    fn the_singers_do_not_start_phase_locked() {
+        let sr = 48_000.0f32;
+        let mut c = FofChoir::new(sr);
+        c.note_on();
+        let rms = |c: &mut FofChoir, n: usize| {
+            let mut acc = 0.0f64;
+            for _ in 0..n {
+                let (l, _) = c.process(261.6, 0.0, 0.01, 0.3, 0.5, 5);
+                acc += (l as f64) * (l as f64);
+            }
+            (acc / n as f64).sqrt()
+        };
+        let _ = rms(&mut c, (0.02 * sr) as usize);
+        let early = rms(&mut c, (0.03 * sr) as usize);
+        let dip = rms(&mut c, (0.15 * sr) as usize);
+        let later = rms(&mut c, (0.3 * sr) as usize);
+        assert!(early < 2.0 * later, "coherent burst: {early} vs {later}");
+        assert!(dip > 0.5 * later, "dip: {dip} vs {later}");
     }
 
     /// cargo test --release --lib fof::tests::profile -- --ignored --nocapture

@@ -30,10 +30,14 @@ pub struct KeyboardState {
     /// Notes currently held via the MOUSE (for highlight). The computer keyboard
     /// is no longer a note source — use a MIDI keyboard for playing.
     pub held:          Vec<u8>,
-    /// Notes the ENGINE is currently sounding (from MIDI / the sequencer). The
-    /// host sets this each frame from its meter so the keyboard REFLECTS what
-    /// MIDI is playing; these keys light up like held ones. Empty = nothing to
-    /// mirror.
+    /// Notes whose KEY IS DOWN at the engine, from MIDI or the sequencer.
+    /// The host sets this each frame from its meter; these keys light up like
+    /// mouse-held ones. Empty = nothing to mirror.
+    ///
+    /// Keys down, not voices sounding: a note whose key has been released is
+    /// still ringing through its release for as long as a second or two, and
+    /// a keyboard that stayed lit through it reads as stuck. An engine
+    /// publishes what it is HOLDING.
     pub active:        Vec<u8>,
     /// Leftmost octave: base MIDI note of the keyboard = `octave * 12`.
     pub octave:        u8,
@@ -115,8 +119,9 @@ pub const BLACK_KEY_POSITIONS: [usize; 5] = [0, 1, 3, 4, 5]; // C#=after C, D#=a
 /// returns the note events produced this frame BY THE MOUSE. The host maps each
 /// [`KeyEvent`] onto its own command channel. Notes are played with the mouse or
 /// an external MIDI keyboard; the computer keyboard is not a note source. Set
-/// `state.active` each frame to the engine's sounding notes so the keyboard
-/// REFLECTS incoming MIDI. `state.held` reflects the widget's mouse-held notes.
+/// `state.active` each frame to the notes the engine is HOLDING (see the
+/// field) so the keyboard reflects incoming MIDI. `state.held` reflects the
+/// widget's mouse-held notes.
 pub fn keyboard_ui(ui: &mut Ui, state: &mut KeyboardState, style: &KeyboardStyle) -> Vec<KeyEvent> {
     let mut events: Vec<KeyEvent> = Vec::new();
 
