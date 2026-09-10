@@ -1,5 +1,9 @@
 # Cordis
 
+**EXPERIMENTAL.** Under development and not yet judged in use: the sound, the factory
+bank and the editor can change from one version to the next. What cannot change is
+listed in `COMPAT.md`.
+
 A grand piano built from the physics, not from samples.
 
 The hammer's force is computed against the string rather than assumed. The
