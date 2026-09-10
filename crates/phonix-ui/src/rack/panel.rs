@@ -1,10 +1,9 @@
 //! One effect's parameters, drawn from its `EffectSpec`.
 
-use egui::{Align2, FontId, Pos2, Rect, Sense, Ui, Vec2};
+use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 use phonix_fx::{Curve, EffectSpec, ParamFlags, ParamKind, ParamSpec, SlotSpec, SpecValue, Value};
 
 use super::RackStyle;
-use crate::preset_picker::{picker_ui, NamedPreset, PresetPickerState, PresetPickerStyle};
 use crate::theme::{lamp, Palette};
 use crate::widgets;
 
@@ -50,24 +49,18 @@ impl<'a> SlotAccess<'a> {
     }
 }
 
-/// Pickers for the enums with many variants, one per parameter index.
+/// What a panel keeps between frames. Nothing yet: every control reads the
+/// slot and writes it back. Kept as a type so an editor's storage does not
+/// change when one of them needs state again.
 #[derive(Default)]
 pub struct PanelState {
-    pickers: Vec<PresetPickerState>,
+    _private: (),
 }
 
-impl PanelState {
-    fn picker(&mut self, index: usize) -> &mut PresetPickerState {
-        if self.pickers.len() <= index {
-            self.pickers.resize_with(index + 1, Default::default);
-        }
-        &mut self.pickers[index]
-    }
-}
-
-/// Up to this many variants, an enum is a row of pills; past it, a list.
-const PILLS_UP_TO: usize = 5;
-const CELL_H: f32 = 26.0;
+/// A parameter's cell: one knob wide for a number or a switch, two for a
+/// list, which needs room for its longest label.
+const CELL_W: f32 = widgets::KNOB_GROUP_W;
+const LIST_W: f32 = widgets::KNOB_GROUP_W * 2.0 + 4.0;
 
 fn to_norm(p: &ParamSpec, v: f32) -> f32 {
     match p.kind {
@@ -110,13 +103,61 @@ fn mix_knob(ui: &mut Ui, slot: &mut SlotSpec, style: &RackStyle) -> bool {
 /// Draw every parameter the kind declares, in the order it declares them,
 /// wrapped in rows. Returns true when the mix moved; parameter writes are
 /// reported by the access.
-pub fn draw_panel(ui: &mut Ui, access: &mut SlotAccess, style: &RackStyle, state: &mut PanelState, slot_index: usize) -> bool {
+/// A parameter's label, under its control, where a knob's label sits.
+fn cell_label(ui: &Ui, rect: Rect, text: &str, tint: Color32) {
+    ui.painter().text(
+        Pos2::new(rect.center().x, rect.bottom() - 12.0),
+        Align2::CENTER_CENTER,
+        text,
+        FontId::proportional(9.0),
+        tint,
+    );
+}
+
+/// A list of named variants, in a cell of the panel's grid: the value on a
+/// recessed strip that opens the list, the parameter's name under it.
+fn list_cell(ui: &mut Ui, height: f32, label: &str, labels: &[&str], selected: usize, style: &RackStyle, salt: &str) -> Option<usize> {
+    let pal = Palette::of(ui.ctx());
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(LIST_W, height), Sense::hover());
+    // The combo's own node carries the value; the cell carries the
+    // parameter's name, which is what a test and a screen reader look for.
+    let shown = labels.get(selected).copied().unwrap_or("").to_string();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, format!("{label}: {shown}")));
+    let strip = Rect::from_min_size(rect.min + Vec2::new(0.0, 4.0), Vec2::new(LIST_W, 20.0));
+    let mut out = None;
+    let mut cui = ui.new_child(egui::UiBuilder::new().max_rect(strip));
+    let v = &mut cui.style_mut().visuals.widgets;
+    for w in [&mut v.inactive, &mut v.hovered, &mut v.active, &mut v.open] {
+        w.bg_fill = pal.well;
+        w.weak_bg_fill = pal.well;
+        w.bg_stroke = Stroke::new(1.0_f32, pal.well_edge);
+    }
+    cui.style_mut().spacing.button_padding = Vec2::new(4.0, 1.0);
+    egui::ComboBox::from_id_salt(salt)
+        .width(LIST_W - 4.0)
+        .selected_text(egui::RichText::new(labels.get(selected).copied().unwrap_or("")).size(9.5).color(style.accent))
+        .show_ui(&mut cui, |ui| {
+            for (i, l) in labels.iter().enumerate() {
+                if ui.selectable_label(i == selected, egui::RichText::new(*l).size(10.0)).clicked() && i != selected {
+                    out = Some(i);
+                }
+            }
+        });
+    cell_label(ui, rect, label, pal.text_dim);
+    out
+}
+
+/// Draw every parameter the kind declares, in the order it declares them,
+/// each in a cell of one grid so a row wraps instead of piling up. Returns
+/// true when the mix moved; parameter writes are reported by the access.
+pub fn draw_panel(ui: &mut Ui, access: &mut SlotAccess, style: &RackStyle, _state: &mut PanelState, slot_index: usize) -> bool {
     let spec = access.spec();
     let pal = Palette::of(ui.ctx());
+    let height = style.knob + widgets::GAP_KNOB_LABEL + 14.0;
     let mut mix_moved = false;
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = Vec2::new(4.0, 6.0);
-        for (index, p) in spec.params.iter().enumerate() {
+        for p in spec.params.iter() {
             if p.flags.contains(ParamFlags::READ_ONLY) {
                 continue;
             }
@@ -129,7 +170,7 @@ pub fn draw_panel(ui: &mut Ui, access: &mut SlotAccess, style: &RackStyle, state
                         ParamKind::Int { .. } => format!("{}", value as i32),
                         _ => p.unit.format(value),
                     };
-                    widgets::knob_cell_for(ui, widgets::KNOB_GROUP_W, style.knob, |ui| {
+                    widgets::knob_cell_for(ui, CELL_W, style.knob, |ui| {
                         widgets::knob_fmt(ui, &mut norm, p.short, &text, style.knob, style.accent);
                     });
                     if (norm - old).abs() > 1e-6 {
@@ -142,10 +183,10 @@ pub fn draw_panel(ui: &mut Ui, access: &mut SlotAccess, style: &RackStyle, state
                 }
                 ParamKind::Bool => {
                     let on = access.value(p).as_bool();
-                    let (rect, resp) = ui.allocate_exact_size(Vec2::new(widgets::KNOB_GROUP_W, CELL_H), Sense::click());
-                    let centre = Pos2::new(rect.left() + 8.0, rect.center().y);
-                    lamp(ui, centre, 4.0, on, style.accent);
-                    ui.painter().text(centre + Vec2::new(10.0, 0.0), Align2::LEFT_CENTER, p.short, FontId::proportional(9.0), if on { style.accent } else { pal.text_dim });
+                    let (rect, resp) = ui.allocate_exact_size(Vec2::new(CELL_W, height), Sense::click());
+                    resp.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Checkbox, true, p.short));
+                    lamp(ui, Pos2::new(rect.center().x, rect.top() + style.knob * 0.5), 5.0, on, style.accent);
+                    cell_label(ui, rect, p.short, if on { style.accent } else { pal.text_dim });
                     if resp.clicked() {
                         access.set(p, !on);
                     }
@@ -153,26 +194,10 @@ pub fn draw_panel(ui: &mut Ui, access: &mut SlotAccess, style: &RackStyle, state
                 ParamKind::Enum { variants, labels } => {
                     let current = access.value(p).as_variant().unwrap_or("");
                     let idx = variants.iter().position(|v| *v == current).unwrap_or(0);
-                    if variants.len() <= PILLS_UP_TO {
-                        ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(p.short).color(pal.text_dim).size(9.0));
-                            for (i, label) in labels.iter().enumerate() {
-                                if widgets::selector_pill(ui, label, i == idx, style.accent).clicked() && i != idx {
-                                    access.set(p, variants[i]);
-                                }
-                            }
-                        });
-                    } else {
-                        let names: Vec<NamedPreset> = labels.iter().map(|l| NamedPreset { name: l, category: None }).collect();
-                        let picker = state.picker(index);
-                        picker.current_idx = idx;
-                        let strip = ui.allocate_exact_size(Vec2::new(150.0, CELL_H), Sense::hover()).0;
-                        let mut cui = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(strip.min, strip.size())));
-                        let salt = format!("{}_{}_{}", style.salt, slot_index, p.id);
-                        if let Some(new_idx) = picker_ui(&mut cui, &PresetPickerStyle { salt: &salt, accent: style.accent, dim: style.dim }, picker, &names) {
-                            if let Some(v) = variants.get(new_idx) {
-                                access.set(p, *v);
-                            }
+                    let salt = format!("{}_{}_{}", style.salt, slot_index, p.id);
+                    if let Some(i) = list_cell(ui, height, p.short, labels, idx, style, &salt) {
+                        if let Some(v) = variants.get(i) {
+                            access.set(p, *v);
                         }
                     }
                 }
@@ -210,6 +235,49 @@ mod tests {
             }
             assert!(harness.query_by_label("Mix").is_some(), "{}: no mix knob", spec.kind);
         }
+    }
+
+    /// Every list a kind declares is reachable too, and the panel's cells
+    /// fit the width they are given: nothing is drawn outside the row.
+    #[test]
+    fn every_declared_list_is_a_cell() {
+        for entry in Registry::builtin().entries() {
+            let spec = entry.spec;
+            let mut slot = SlotSpec::new(spec.kind);
+            let mut state = PanelState::default();
+            let mut harness = Harness::builder().with_size(egui::vec2(900.0, 400.0)).build_ui(|ui| {
+                let mut access = SlotAccess::new(&mut slot, spec);
+                let style = RackStyle { accent: egui::Color32::WHITE, dim: egui::Color32::GRAY, knob: 32.0, salt: "t" };
+                draw_panel(ui, &mut access, &style, &mut state, 0);
+            });
+            harness.run_steps(2);
+            for p in spec.params.iter().filter(|p| matches!(p.kind, ParamKind::Enum { .. } | ParamKind::Bool)) {
+                let found = harness.query_all_by_label(p.short).count() >= 1
+                    || harness.get_all_by_label_contains(p.short).count() >= 1;
+                assert!(found, "{}: no cell for {:?}", spec.kind, p.id);
+            }
+        }
+    }
+
+    /// Look at it: the widest panel this build ships, at the width an
+    /// editor gives it. Ignored because it needs a GPU (lavapipe does):
+    ///   VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json \
+    ///   UPDATE_SNAPSHOTS=1 cargo test -p phonix-ui --features rack panel_snapshot -- --ignored
+    #[test]
+    #[ignore = "needs a rendering backend"]
+    fn panel_snapshot() {
+        let registry = Registry::builtin();
+        let entry = registry.entries().iter().max_by_key(|e| e.spec.params.len()).expect("a kind");
+        let spec = entry.spec;
+        let mut slot = SlotSpec::new(spec.kind);
+        let mut state = PanelState::default();
+        let mut harness = Harness::builder().with_size(egui::vec2(680.0, 180.0)).build_ui(move |ui| {
+            let mut access = SlotAccess::new(&mut slot, spec);
+            let style = RackStyle { accent: egui::Color32::from_rgb(255, 92, 208), dim: egui::Color32::GRAY, knob: 30.0, salt: "t" };
+            draw_panel(ui, &mut access, &style, &mut state, 0);
+        });
+        harness.run_steps(3);
+        harness.snapshot("rack_panel");
     }
 
     /// A value written by the panel lands in the slot under the spec's id,

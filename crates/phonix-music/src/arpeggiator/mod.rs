@@ -555,6 +555,15 @@ impl Arpeggiator {
         }
     }
 
+    /// Fire the next step on the next call to `process`, from step 0: what
+    /// a key going down on an idle arpeggiator does, so the first note
+    /// sounds at once instead of up to a step later.
+    pub fn fire_now(&mut self) {
+        self.step_index = 0;
+        self.rhythm_step = 0;
+        self.sample_count = self.samples_per_step;
+    }
+
     pub fn note_off(&mut self, note: u8) {
         self.held_notes.retain(|&n| n != note);
         self.played_order.retain(|&n| n != note);
